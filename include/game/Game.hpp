@@ -10,6 +10,7 @@
 #include "movement/MovementSystem.hpp"
 #include "pieces/Piece.hpp"
 #include "rules/IRuleEngine.hpp"
+#include "game/IGameInputAdapter.hpp"
 
 namespace kungfu {
 
@@ -44,6 +45,16 @@ public:
     void resolveJump(const Position& cell);
     bool handleArrivalAtAirbornCell(const Position& cell, const Position& arrivingFrom);
 
+    // Input adapter can be injected to supply commands from an external source.
+    void setInputAdapter(IGameInputAdapterPtr adapter);
+    bool selectPiece(const Position& pos);
+    bool requestMove(const Position& from, const Position& to);
+    bool requestJump(const Position& pos);
+    bool hasSelection() const;
+    std::optional<Position> selectedPosition() const;
+    bool isFriendlyPieceAt(const Position& pos) const;
+    bool isPositionInBounds(const Position& pos) const;
+
 private:
     std::string getPieceToken(const PiecePtr& piece) const;
 
@@ -57,6 +68,7 @@ private:
     std::optional<Position> selectedPosition_;
     std::optional<PendingMove> pendingMove_;
     int currentTimeMs_ = 0;
+    IGameInputAdapterPtr inputAdapter_;
 };
 
 }  // namespace kungfu

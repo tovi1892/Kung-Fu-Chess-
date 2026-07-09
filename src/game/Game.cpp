@@ -1,6 +1,9 @@
 #include "game/Game.hpp"
+#include <algorithm>
+
 #include "board/Board.hpp"
 #include "common/GameConfig.hpp"
+#include "game/UIInputAdapter.hpp"
 #include "pieces/Queen.hpp"
 #include "rules/RuleEngine.hpp"
 
@@ -18,6 +21,154 @@ Game::Game(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngine> ruleEngin
     if (!ruleEngine_) {
         ruleEngine_ = std::make_shared<RuleEngine>(board_);
     }
+    inputAdapter_ = std::make_shared<UIInputAdapter>(*this);
+}
+
+void Game::setInputAdapter(IGameInputAdapterPtr adapter) {
+    inputAdapter_ = std::move(adapter);
+}
+
+bool Game::selectPiece(const Position& pos) {
+    if (state_ != GameState::Running || pendingMove_.has_value()) {
+        return false;
+    }
+
+    const auto piece = board_->pieceAt(pos);
+    if (!piece.has_value()) {
+        return false;
+    }
+
+    if (!selectedPosition_.has_value()) {
+        selectedPosition_ = pos;
+        return true;
+    }
+
+    if (pos == *selectedPosition_) {
+        requestJump(pos);
+        selectedPosition_.reset();
+        return true;
+    }
+
+    const auto selectedPiece = board_->pieceAt(*selectedPosition_);
+    if (selectedPiece.has_value() && selectedPiece.value()->color() == piece.value()->color()) {
+        selectedPosition_ = pos;
+        return true;
+    }
+
+    return false;
+}
+
+bool Game::requestMove(const Position& from, const Position& to) {
+    if (state_ != GameState::Running || pendingMove_.has_value()) {
+        return false;
+    }
+
+    if (!ruleEngine_->isValidMove(from, to)) {
+        return false;
+    }
+
+    const auto movingPiece = board_->pieceAt(from);
+    if (!movingPiece.has_value()) {
+        return false;
+    }
+
+    if (movingPiece.value()->state() == PieceState::Moving) {
+        return false;
+    }
+
+    if (collisionSystem_->isFriendlyBlock(from, to)) {
+        return false;
+    }
+
+    PieceType type = movingPiece.value()->type();
+    if (type == PieceType::Queen || type == PieceType::Rook || type == PieceType::Bishop) {
+        if (!collisionSystem_->isPathClear(from, to)) {
+            return false;
+        }
+    }
+
+    const auto middle = movementSystem_.pawnDoubleStepMiddle(from, to);
+    if (middle.has_value() && !collisionSystem_->isPathClear(from, to)) {
+        return false;
+    }
+
+    const auto targetPiece = board_->pieceAt(to);
+    if (targetPiece.has_value() && targetPiece.value()->isAirborne() &&
+        targetPiece.value()->color() == movingPiece.value()->color()) {
+        return false;
+    }
+
+    if (targetPiece.has_value() && targetPiece.value()->isAirborne() &&
+        targetPiece.value()->color() != movingPiece.value()->color()) {
+        movingPiece.value()->setState(PieceState::Captured);
+        board_->removePiece(from);
+        selectedPosition_.reset();
+        return true;
+    }
+
+    const bool capturedKing = collisionSystem_->isCapture(from, to) &&
+                              targetPiece.has_value() &&
+                              targetPiece.value()->type() == PieceType::King;
+
+    if (!board_->movePiece(from, to)) {
+        return false;
+    }
+
+    if (capturedKing) {
+        state_ = GameState::Finished;
+        selectedPosition_.reset();
+        return true;
+    }
+
+    const auto movedPiece = board_->pieceAt(to);
+    if (movedPiece.has_value() &&
+        movedPiece.value()->type() == PieceType::Pawn &&
+        ruleEngine_->isPawnPromotion(to, movedPiece.value()->color())) {
+        board_->replacePiece(to, std::make_shared<Queen>(movedPiece.value()->color(), to));
+    }
+
+    int rowDelta = std::abs(to.row() - from.row());
+    int colDelta = std::abs(to.col() - from.col());
+    int distance = std::max(rowDelta, colDelta);
+
+    pendingMove_ = PendingMove{from, to, currentTimeMs_ + (distance * 1000)};
+    movingPiece.value()->setState(PieceState::Moving);
+    selectedPosition_.reset();
+    return true;
+}
+
+bool Game::requestJump(const Position& pos) {
+    const bool jumped = tryJump(pos);
+    if (jumped) {
+        selectedPosition_.reset();
+    }
+    return jumped;
+}
+
+bool Game::hasSelection() const {
+    return selectedPosition_.has_value();
+}
+
+std::optional<Position> Game::selectedPosition() const {
+    return selectedPosition_;
+}
+
+bool Game::isFriendlyPieceAt(const Position& pos) const {
+    if (!selectedPosition_.has_value()) {
+        return false;
+    }
+
+    const auto selectedPiece = board_->pieceAt(*selectedPosition_);
+    const auto targetPiece = board_->pieceAt(pos);
+    return selectedPiece.has_value() && targetPiece.has_value() &&
+           selectedPiece.value()->color() == targetPiece.value()->color();
+}
+
+bool Game::isPositionInBounds(const Position& pos) const {
+    auto concreteBoard = std::dynamic_pointer_cast<Board>(board_);
+    int maxRows = concreteBoard ? concreteBoard->rows() : GameConfig::kBoardSize;
+    int maxCols = concreteBoard ? concreteBoard->cols() : GameConfig::kBoardSize;
+    return movementSystem_.isInBounds(pos, maxRows, maxCols);
 }
 
 void Game::start() {
@@ -51,63 +202,8 @@ std::string Game::getPieceToken(const PiecePtr& piece) const {
 
 // מימוש פקודת click x y
 void Game::click(int x, int y) {
-    if (state_ != GameState::Running || pendingMove_.has_value()) {
-        return;
-    }
-
-    // המרת פיקסלים לתאי לוח (כל תא 100x100)
-    Position pos{y / 100, x / 100};
-
-    // התעלמות מלחיצה מחוץ לגבולות הלוח
-    auto concreteBoard = std::dynamic_pointer_cast<Board>(board_);
-    int maxRows = concreteBoard ? concreteBoard->rows() : GameConfig::kBoardSize;
-    int maxCols = concreteBoard ? concreteBoard->cols() : GameConfig::kBoardSize;
-    if (!movementSystem_.isInBounds(pos, maxRows, maxCols)) {
-        return;
-    }
-
-    auto piece = board_->pieceAt(pos);
-
-    // אם אין כלי מסומן כרגע
-    if (!selectedPosition_.has_value()) {
-        if (piece.has_value()) {
-            selectedPosition_ = pos; // בחירת הכלי
-        }
-        return;
-    }
-
-    // לחיצה על אותו תא מסומן (תומך בקפיצות לשלבים הבאים)
-    if (pos == *selectedPosition_) {
-        tryJump(pos);
-        selectedPosition_.reset();
-        return;
-    }
-
-    // אם כבר יש כלי מסומן, ולחצנו על תא עם כלי אחר
-    if (piece.has_value()) {
-        auto selectedPiece = board_->pieceAt(*selectedPosition_);
-        if (selectedPiece.has_value() && selectedPiece.value()->color() == piece.value()->color()) {
-            // לחיצה על כלי ידידותי אחר -> מחליפה את הסימון
-            selectedPosition_ = pos;
-            return;
-        }
-    }
-
-    // ניסיון לשלוח בקשת תנועה (זמן ההגעה מחושב לפי מרחק הצעדים - 1000 מילישניות לכל תא)
-    if (ruleEngine_->isValidMove(*selectedPosition_, pos)) {
-        int rowDelta = std::abs(pos.row() - selectedPosition_->row());
-        int colDelta = std::abs(pos.col() - selectedPosition_->col());
-        int distance = std::max(rowDelta, colDelta); // מרחק צעדים
-
-        pendingMove_ = PendingMove{*selectedPosition_, pos, currentTimeMs_ + (distance * 1000)};
-
-        // סימון הכלי כנמצא בתנועה (נועל אותו מפקודות נוספות)
-        auto movingPiece = board_->pieceAt(*selectedPosition_);
-        if (movingPiece.has_value()) {
-            movingPiece.value()->setState(PieceState::Moving);
-        }
-
-        selectedPosition_.reset();
+    if (inputAdapter_) {
+        inputAdapter_->handleClick(x, y);
     }
 }
 
