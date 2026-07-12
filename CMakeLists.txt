@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+﻿cmake_minimum_required(VERSION 3.16)
 project(kung_fu_chess LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -29,6 +29,7 @@ add_library(kungfu_engine
     src/rules/RuleEngine.cpp
     src/game/Game.cpp
     src/game/UIInputAdapter.cpp
+    src/BoardParser.cpp
 )
 target_include_directories(kungfu_engine PUBLIC include)
 
