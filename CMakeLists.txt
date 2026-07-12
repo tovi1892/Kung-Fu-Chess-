@@ -23,6 +23,12 @@ add_library(kungfu_engine
 )
 target_include_directories(kungfu_engine PUBLIC include)
 
+add_executable(kungfu_app
+    main.cpp
+)
+target_link_libraries(kungfu_app PRIVATE kungfu_engine)
+target_include_directories(kungfu_app PRIVATE include)
+
 add_executable(kungfu_tests
     tests/unit/PositionTests.cpp
     tests/unit/PieceTests.cpp
@@ -35,6 +41,7 @@ add_executable(kungfu_tests
     tests/unit/PawnTests.cpp
     tests/unit/JumpTests.cpp
     tests/unit/ConfigAndBoundaryTests.cpp
+    tests/unit/UIInputAdapterTests.cpp
 )
 target_link_libraries(kungfu_tests PRIVATE kungfu_engine)
 target_include_directories(kungfu_tests PRIVATE include)

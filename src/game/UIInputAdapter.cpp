@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include "game/Game.hpp"
-
 namespace kungfu {
 
 namespace {
@@ -31,14 +29,19 @@ std::optional<Position> BoardMapper::mapToBoard(int x, int y, int maxRows, int m
     return Position(row, col);
 }
 
-UIInputAdapter::UIInputAdapter(Game& game) : game_(game) {}
+UIInputAdapter::UIInputAdapter(IGameInputTarget& game)
+    : targetProvider_([&game]() -> IGameInputTarget& { return game; }) {}
+
+UIInputAdapter::UIInputAdapter(std::function<IGameInputTarget&()> targetProvider)
+    : targetProvider_(std::move(targetProvider)) {}
 
 void UIInputAdapter::setBoardMapper(BoardMapper mapper) {
     boardMapper_ = std::move(mapper);
 }
 
 void UIInputAdapter::handleClick(int x, int y) {
-    if (!game_.isRunning()) {
+    auto& game = targetProvider_();
+    if (!game.isRunning()) {
         return;
     }
 
@@ -47,27 +50,27 @@ void UIInputAdapter::handleClick(int x, int y) {
         return;
     }
 
-    if (!game_.hasSelection()) {
-        game_.selectPiece(*pos);
+    if (!game.hasSelection()) {
+        game.selectPiece(*pos);
         return;
     }
 
-    const auto selected = game_.selectedPosition();
+    const auto selected = game.selectedPosition();
     if (!selected.has_value()) {
         return;
     }
 
     if (*pos == *selected) {
-        game_.requestJump(*pos);
+        game.requestJump(*pos);
         return;
     }
 
-    if (game_.isFriendlyPieceAt(*pos)) {
-        game_.selectPiece(*pos);
+    if (game.isFriendlyPieceAt(*pos)) {
+        game.selectPiece(*pos);
         return;
     }
 
-    game_.requestMove(*selected, *pos);
+    game.requestMove(*selected, *pos);
 }
 
 std::optional<InputCommand> UIInputAdapter::nextCommand() {

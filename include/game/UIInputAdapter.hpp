@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -8,8 +9,6 @@
 
 namespace kungfu {
 
-class Game;
-
 class BoardMapper {
 public:
     std::optional<Position> mapToBoard(int x, int y, int maxRows, int maxCols) const;
@@ -17,14 +16,15 @@ public:
 
 class UIInputAdapter : public IGameInputAdapter {
 public:
-    explicit UIInputAdapter(Game& game);
+    explicit UIInputAdapter(IGameInputTarget& game);
+    explicit UIInputAdapter(std::function<IGameInputTarget&()> targetProvider);
 
     void setBoardMapper(BoardMapper mapper);
     void handleClick(int x, int y) override;
     std::optional<InputCommand> nextCommand() override;
 
 private:
-    Game& game_;
+    std::function<IGameInputTarget&()> targetProvider_;
     BoardMapper boardMapper_;
 };
 

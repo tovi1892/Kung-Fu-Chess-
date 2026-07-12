@@ -9,23 +9,25 @@
 
 namespace kungfu {
 
-Game::Game() : Game(std::make_shared<Board>(), nullptr) {}
+Game::Game() : Game(std::make_shared<Board>(), nullptr, nullptr) {}
 
-Game::Game(std::shared_ptr<IBoard> board) : Game(std::move(board), nullptr) {}
+Game::Game(std::shared_ptr<IBoard> board) : Game(std::move(board), nullptr, nullptr) {}
 
 Game::Game(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngine> ruleEngine)
+    : Game(std::move(board), std::move(ruleEngine), nullptr) {}
+
+Game::Game(std::shared_ptr<IBoard> board,
+           std::shared_ptr<IRuleEngine> ruleEngine,
+           IGameInputAdapterPtr inputAdapter)
     : state_(GameState::NotStarted),
       board_(std::move(board)),
       ruleEngine_(std::move(ruleEngine)),
-      collisionSystem_(std::make_shared<CollisionSystem>(board_)) {
+      collisionSystem_(std::make_shared<CollisionSystem>(board_)),
+      inputAdapter_(std::move(inputAdapter) ? std::move(inputAdapter)
+                                           : std::make_shared<UIInputAdapter>(*this)) {
     if (!ruleEngine_) {
         ruleEngine_ = std::make_shared<RuleEngine>(board_);
     }
-    inputAdapter_ = std::make_shared<UIInputAdapter>(*this);
-}
-
-void Game::setInputAdapter(IGameInputAdapterPtr adapter) {
-    inputAdapter_ = std::move(adapter);
 }
 
 bool Game::selectPiece(const Position& pos) {

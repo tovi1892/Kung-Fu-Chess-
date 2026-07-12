@@ -21,11 +21,14 @@ struct PendingMove {
     int arrivalTimeMs;
 };
 
-class Game {
+class Game : public IGameInputTarget {
 public:
     Game();
     explicit Game(std::shared_ptr<IBoard> board);
     Game(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngine> ruleEngine);
+    Game(std::shared_ptr<IBoard> board,
+         std::shared_ptr<IRuleEngine> ruleEngine,
+         IGameInputAdapterPtr inputAdapter);
 
     void start();
     void stop();
@@ -45,8 +48,6 @@ public:
     void resolveJump(const Position& cell);
     bool handleArrivalAtAirbornCell(const Position& cell, const Position& arrivingFrom);
 
-    // Input adapter can be injected to supply commands from an external source.
-    void setInputAdapter(IGameInputAdapterPtr adapter);
     bool selectPiece(const Position& pos);
     bool requestMove(const Position& from, const Position& to);
     bool requestJump(const Position& pos);
@@ -68,7 +69,7 @@ private:
     std::optional<Position> selectedPosition_;
     std::optional<PendingMove> pendingMove_;
     int currentTimeMs_ = 0;
-    IGameInputAdapterPtr inputAdapter_;
+    const std::shared_ptr<IGameInputAdapter> inputAdapter_;
 };
 
 }  // namespace kungfu
