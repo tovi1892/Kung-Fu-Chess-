@@ -3,7 +3,7 @@
 #include <cassert>
 #include "common/Position.hpp"
 
-int main() {
+int PositionTests_main() {
     kungfu::Position p1(2, 3);
     kungfu::Position p2(2, 3);
     kungfu::Position p3(4, 5);

@@ -28,7 +28,7 @@ public:
 
 }  // namespace
 
-int main() {
+int UIInputAdapterTests_main() {
     MockGame game;
     kungfu::UIInputAdapter adapter(game);
 

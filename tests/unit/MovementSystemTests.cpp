@@ -8,7 +8,7 @@
 #include "pieces/Pawn.hpp"
 #include "pieces/Rook.hpp"
 
-int main() {
+int MovementSystemTests_main() {
     kungfu::MovementSystem movement;
 
     kungfu::King king(kungfu::PlayerColor::White, kungfu::Position(0, 0));

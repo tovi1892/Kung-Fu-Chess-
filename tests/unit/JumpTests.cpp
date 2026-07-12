@@ -7,17 +7,18 @@
 #include "game/Game.hpp"
 #include "pieces/King.hpp"
 #include "pieces/Rook.hpp"
+#include "TestHelpers.hpp"
 
-int main() {
+int JumpTests_main() {
     // --- tryJump sets piece to Airborne ---
     {
         auto board = std::make_shared<kungfu::Board>();
         auto rook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
         board->placePiece(rook, kungfu::Position(3, 3));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(g.tryJump(kungfu::Position(3, 3)));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(g->tryJump(kungfu::Position(3, 3)));
         assert(rook->isAirborne());
         assert(board->pieceAt(kungfu::Position(3, 3)).has_value());  // still on board
     }
@@ -28,10 +29,10 @@ int main() {
         auto rook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
         board->placePiece(rook, kungfu::Position(3, 3));
 
-        kungfu::Game g(board);
-        g.start();
-        g.tryJump(kungfu::Position(3, 3));
-        g.resolveJump(kungfu::Position(3, 3));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        g->tryJump(kungfu::Position(3, 3));
+        g->resolveJump(kungfu::Position(3, 3));
         assert(!rook->isAirborne());
         assert(rook->state() == kungfu::PieceState::Idle);
         assert(board->pieceAt(kungfu::Position(3, 3)).has_value());
@@ -45,10 +46,10 @@ int main() {
         board->placePiece(whiteRook, kungfu::Position(3, 3));
         board->placePiece(blackRook, kungfu::Position(3, 0));
 
-        kungfu::Game g(board);
-        g.start();
-        g.tryJump(kungfu::Position(3, 3));                                         // white rook jumps
-        const bool captured = g.handleArrivalAtAirbornCell(                        // black arrives
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        g->tryJump(kungfu::Position(3, 3));                                         // white rook jumps
+        const bool captured = g->handleArrivalAtAirbornCell(                        // black arrives
             kungfu::Position(3, 3), kungfu::Position(3, 0));
         assert(captured);
         assert(!board->pieceAt(kungfu::Position(3, 0)).has_value());               // attacker removed
@@ -64,10 +65,10 @@ int main() {
         board->placePiece(whiteRook1, kungfu::Position(3, 3));
         board->placePiece(whiteRook2, kungfu::Position(3, 0));
 
-        kungfu::Game g(board);
-        g.start();
-        g.tryJump(kungfu::Position(3, 3));
-        const bool captured = g.handleArrivalAtAirbornCell(
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        g->tryJump(kungfu::Position(3, 3));
+        const bool captured = g->handleArrivalAtAirbornCell(
             kungfu::Position(3, 3), kungfu::Position(3, 0));
         assert(!captured);                                                           // no capture
         assert(board->pieceAt(kungfu::Position(3, 0)).has_value());                 // friendly untouched
@@ -81,9 +82,9 @@ int main() {
 
         rook->setState(kungfu::PieceState::Moving);
 
-        kungfu::Game g(board);
-        g.start();
-        assert(!g.tryJump(kungfu::Position(3, 3)));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(!g->tryJump(kungfu::Position(3, 3)));
         assert(!rook->isAirborne());
     }
 
@@ -95,9 +96,9 @@ int main() {
 
         rook->setState(kungfu::PieceState::Captured);
 
-        kungfu::Game g(board);
-        g.start();
-        assert(!g.tryJump(kungfu::Position(3, 3)));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(!g->tryJump(kungfu::Position(3, 3)));
     }
 
     // --- Airborne capture of enemy king ends the game ---
@@ -108,11 +109,11 @@ int main() {
         board->placePiece(whiteRook, kungfu::Position(0, 0));
         board->placePiece(blackKing, kungfu::Position(0, 7));
 
-        kungfu::Game g(board);
-        g.start();
-        g.tryJump(kungfu::Position(0, 0));
-        g.handleArrivalAtAirbornCell(kungfu::Position(0, 0), kungfu::Position(0, 7));
-        assert(g.isFinished());
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        g->tryJump(kungfu::Position(0, 0));
+        g->handleArrivalAtAirbornCell(kungfu::Position(0, 0), kungfu::Position(0, 7));
+        assert(g->isFinished());
     }
 
     // --- Already-airborne piece cannot jump again ---
@@ -121,10 +122,10 @@ int main() {
         auto rook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
         board->placePiece(rook, kungfu::Position(3, 3));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(g.tryJump(kungfu::Position(3, 3)));
-        assert(!g.tryJump(kungfu::Position(3, 3)));  // second jump rejected
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(g->tryJump(kungfu::Position(3, 3)));
+        assert(!g->tryJump(kungfu::Position(3, 3)));  // second jump rejected
     }
 
     return 0;

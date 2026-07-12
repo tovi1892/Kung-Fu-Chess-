@@ -4,7 +4,7 @@
 #include "board/Board.hpp"
 #include "pieces/King.hpp"
 
-int main() {
+int BoardTests_main() {
     kungfu::Board board;
     auto king = std::make_shared<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
 

@@ -6,7 +6,7 @@
 #include "collision/CollisionSystem.hpp"
 #include "pieces/King.hpp"
 
-int main() {
+int CollisionSystemTests_main() {
     auto board = std::make_shared<kungfu::Board>();
     auto attacker = std::make_shared<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
     auto defender = std::make_shared<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(1, 1));

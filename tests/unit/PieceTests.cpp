@@ -3,7 +3,7 @@
 #include <cassert>
 #include "pieces/King.hpp"
 
-int main() {
+int PieceTests_main() {
     kungfu::King piece(kungfu::PlayerColor::White, kungfu::Position(0, 0));
 
     assert(piece.type() == kungfu::PieceType::King);

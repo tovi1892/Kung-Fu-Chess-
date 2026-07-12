@@ -6,7 +6,7 @@
 #include "pieces/King.hpp"
 #include "rules/RuleEngine.hpp"
 
-int main() {
+int RuleEngineTests_main() {
     auto board = std::make_shared<kungfu::Board>();
     auto king = std::make_shared<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
     board->placePiece(king, kungfu::Position(0, 0));

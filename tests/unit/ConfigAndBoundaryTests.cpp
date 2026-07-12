@@ -4,7 +4,7 @@
 #include "common/GameConfig.hpp"
 #include "movement/MovementSystem.hpp"
 
-int main() {
+int ConfigAndBoundaryTests_main() {
     kungfu::MovementSystem movement;
 
     assert(kungfu::GameConfig::kBoardSize == 8);

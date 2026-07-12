@@ -48,6 +48,8 @@ public:
     void resolveJump(const Position& cell);
     bool handleArrivalAtAirbornCell(const Position& cell, const Position& arrivingFrom);
 
+    std::shared_ptr<IBoard> getBoard() const;
+
     bool selectPiece(const Position& pos);
     bool requestMove(const Position& from, const Position& to);
     bool requestJump(const Position& pos);

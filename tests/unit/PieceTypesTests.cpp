@@ -8,7 +8,7 @@
 #include "pieces/Knight.hpp"
 #include "pieces/Pawn.hpp"
 
-int main() {
+int PieceTypesTests_main() {
     kungfu::King king(kungfu::PlayerColor::White, kungfu::Position(0, 0));
     kungfu::Queen queen(kungfu::PlayerColor::Black, kungfu::Position(1, 1));
     kungfu::Rook rook(kungfu::PlayerColor::White, kungfu::Position(2, 2));

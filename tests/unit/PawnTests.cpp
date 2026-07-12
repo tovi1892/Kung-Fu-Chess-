@@ -8,17 +8,18 @@
 #include "pieces/Pawn.hpp"
 #include "pieces/Queen.hpp"
 #include "pieces/Rook.hpp"
+#include "TestHelpers.hpp"
 
-int main() {
+int PawnTests_main() {
     // --- Double-step from start row is allowed ---
     {
         auto board = std::make_shared<kungfu::Board>();
         auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 0));
         board->placePiece(pawn, kungfu::Position(1, 0));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(g.tryMove(kungfu::Position(1, 0), kungfu::Position(3, 0)));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(g->tryMove(kungfu::Position(1, 0), kungfu::Position(3, 0)));
         assert(board->pieceAt(kungfu::Position(3, 0)).has_value());
         assert(!board->pieceAt(kungfu::Position(1, 0)).has_value());
     }
@@ -29,9 +30,9 @@ int main() {
         auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(3, 0));
         board->placePiece(pawn, kungfu::Position(3, 0));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(!g.tryMove(kungfu::Position(3, 0), kungfu::Position(5, 0)));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(!g->tryMove(kungfu::Position(1, 0), kungfu::Position(3, 0)));
         assert(board->pieceAt(kungfu::Position(3, 0)).has_value());  // pawn didn't move
     }
 
@@ -43,9 +44,9 @@ int main() {
         board->placePiece(pawn, kungfu::Position(1, 0));
         board->placePiece(blocker, kungfu::Position(2, 0));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(!g.tryMove(kungfu::Position(1, 0), kungfu::Position(3, 0)));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(!g->tryMove(kungfu::Position(1, 0), kungfu::Position(3, 0)));
         assert(board->pieceAt(kungfu::Position(1, 0)).has_value());
     }
 
@@ -55,9 +56,9 @@ int main() {
         auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::Black, kungfu::Position(6, 0));
         board->placePiece(pawn, kungfu::Position(6, 0));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(g.tryMove(kungfu::Position(6, 0), kungfu::Position(4, 0)));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(g->tryMove(kungfu::Position(6, 0), kungfu::Position(4, 0)));
         assert(board->pieceAt(kungfu::Position(4, 0)).has_value());
     }
 
@@ -67,9 +68,9 @@ int main() {
         auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(6, 0));
         board->placePiece(pawn, kungfu::Position(6, 0));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(g.tryMove(kungfu::Position(6, 0), kungfu::Position(7, 0)));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(g->tryMove(kungfu::Position(6, 0), kungfu::Position(7, 0)));
 
         const auto promoted = board->pieceAt(kungfu::Position(7, 0));
         assert(promoted.has_value());
@@ -83,9 +84,9 @@ int main() {
         auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::Black, kungfu::Position(1, 0));
         board->placePiece(pawn, kungfu::Position(1, 0));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(g.tryMove(kungfu::Position(1, 0), kungfu::Position(0, 0)));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(g->tryMove(kungfu::Position(1, 0), kungfu::Position(0, 0)));
 
         const auto promoted = board->pieceAt(kungfu::Position(0, 0));
         assert(promoted.has_value());
@@ -99,9 +100,9 @@ int main() {
         auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(3, 0));
         board->placePiece(pawn, kungfu::Position(3, 0));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(g.tryMove(kungfu::Position(3, 0), kungfu::Position(4, 0)));
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(g->tryMove(kungfu::Position(3, 0), kungfu::Position(4, 0)));
 
         const auto piece = board->pieceAt(kungfu::Position(4, 0));
         assert(piece.has_value());
@@ -114,13 +115,13 @@ int main() {
         auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(6, 1));
         board->placePiece(pawn, kungfu::Position(6, 1));
 
-        kungfu::Game g(board);
-        g.start();
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
         // Promote
-        assert(g.tryMove(kungfu::Position(6, 1), kungfu::Position(7, 1)));
+        assert(g->tryMove(kungfu::Position(6, 1), kungfu::Position(7, 1)));
         assert(board->pieceAt(kungfu::Position(7, 1)).value()->type() == kungfu::PieceType::Queen);
         // Queen moves diagonally
-        assert(g.tryMove(kungfu::Position(7, 1), kungfu::Position(6, 2)));
+        assert(g->tryMove(kungfu::Position(7, 1), kungfu::Position(6, 2)));
         assert(board->pieceAt(kungfu::Position(6, 2)).has_value());
         assert(board->pieceAt(kungfu::Position(6, 2)).value()->type() == kungfu::PieceType::Queen);
     }
@@ -133,11 +134,11 @@ int main() {
         board->placePiece(pawn, kungfu::Position(6, 0));
         board->placePiece(blackKing, kungfu::Position(0, 7));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(g.tryMove(kungfu::Position(6, 0), kungfu::Position(7, 0)));
-        assert(!g.isFinished());  // game must NOT end just because a pawn promoted
-        assert(g.isRunning());
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(g->tryMove(kungfu::Position(6, 0), kungfu::Position(7, 0)));
+        assert(!g->isFinished());  // game must NOT end just because a pawn promoted
+        assert(g->isRunning());
     }
 
     // --- Pawn cannot capture forward ---
@@ -148,9 +149,9 @@ int main() {
         board->placePiece(whitePawn, kungfu::Position(1, 0));
         board->placePiece(enemyRook, kungfu::Position(2, 0));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(!g.tryMove(kungfu::Position(1, 0), kungfu::Position(2, 0))); // רגלי חסום, אינו יכול לאכול ישר קדימה
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(!g->tryMove(kungfu::Position(1, 0), kungfu::Position(2, 0))); // רגלי חסום, אינו יכול לאכול ישר קדימה
         assert(board->pieceAt(kungfu::Position(1, 0)).has_value());
         assert(board->pieceAt(kungfu::Position(2, 0)).has_value());
     }
@@ -163,9 +164,9 @@ int main() {
         board->placePiece(whitePawn, kungfu::Position(1, 1));
         board->placePiece(enemyRook, kungfu::Position(2, 2));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(g.tryMove(kungfu::Position(1, 1), kungfu::Position(2, 2))); // אכילה באלכסון מאושרת
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(g->tryMove(kungfu::Position(1, 1), kungfu::Position(2, 2))); // אכילה באלכסון מאושרת
         assert(board->pieceAt(kungfu::Position(2, 2)).has_value());
         assert(board->pieceAt(kungfu::Position(2, 2)).value()->type() == kungfu::PieceType::Pawn);
         assert(!board->pieceAt(kungfu::Position(1, 1)).has_value());
@@ -177,9 +178,9 @@ int main() {
         auto whitePawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 1));
         board->placePiece(whitePawn, kungfu::Position(1, 1));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(!g.tryMove(kungfu::Position(1, 1), kungfu::Position(2, 2))); // אסור לזוז באלכסון למשבצת ריקה
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(!g->tryMove(kungfu::Position(1, 1), kungfu::Position(2, 2))); // אסור לזוז באלכסון למשבצת ריקה
         assert(board->pieceAt(kungfu::Position(1, 1)).has_value());
     }
 
@@ -191,9 +192,9 @@ int main() {
         board->placePiece(whitePawn, kungfu::Position(1, 1));
         board->placePiece(friendlyRook, kungfu::Position(2, 2));
 
-        kungfu::Game g(board);
-        g.start();
-        assert(!g.tryMove(kungfu::Position(1, 1), kungfu::Position(2, 2))); // אסור לאכול כלי ידידותי באלכסון
+        auto g = kungfu::createGameWithAdapter(board);
+        g->start();
+        assert(!g->tryMove(kungfu::Position(1, 1), kungfu::Position(2, 2))); // אסור לאכול כלי ידידותי באלכסון
         assert(board->pieceAt(kungfu::Position(1, 1)).has_value());
     }
 

@@ -1,5 +1,6 @@
 #include "game/Game.hpp"
 #include <algorithm>
+#include <stdexcept>
 
 #include "board/Board.hpp"
 #include "common/GameConfig.hpp"
@@ -23,10 +24,12 @@ Game::Game(std::shared_ptr<IBoard> board,
       board_(std::move(board)),
       ruleEngine_(std::move(ruleEngine)),
       collisionSystem_(std::make_shared<CollisionSystem>(board_)),
-      inputAdapter_(std::move(inputAdapter) ? std::move(inputAdapter)
-                                           : std::make_shared<UIInputAdapter>(*this)) {
+      inputAdapter_(std::move(inputAdapter)) {
     if (!ruleEngine_) {
         ruleEngine_ = std::make_shared<RuleEngine>(board_);
+    }
+    if (!inputAdapter_) {
+        throw std::invalid_argument("Game requires an IGameInputAdapter");
     }
 }
 
@@ -112,23 +115,6 @@ bool Game::requestMove(const Position& from, const Position& to) {
                               targetPiece.has_value() &&
                               targetPiece.value()->type() == PieceType::King;
 
-    if (!board_->movePiece(from, to)) {
-        return false;
-    }
-
-    if (capturedKing) {
-        state_ = GameState::Finished;
-        selectedPosition_.reset();
-        return true;
-    }
-
-    const auto movedPiece = board_->pieceAt(to);
-    if (movedPiece.has_value() &&
-        movedPiece.value()->type() == PieceType::Pawn &&
-        ruleEngine_->isPawnPromotion(to, movedPiece.value()->color())) {
-        board_->replacePiece(to, std::make_shared<Queen>(movedPiece.value()->color(), to));
-    }
-
     int rowDelta = std::abs(to.row() - from.row());
     int colDelta = std::abs(to.col() - from.col());
     int distance = std::max(rowDelta, colDelta);
@@ -136,6 +122,13 @@ bool Game::requestMove(const Position& from, const Position& to) {
     pendingMove_ = PendingMove{from, to, currentTimeMs_ + (distance * 1000)};
     movingPiece.value()->setState(PieceState::Moving);
     selectedPosition_.reset();
+
+    if (capturedKing) {
+        // The king capture will be resolved when the move completes.
+        // Keep the pending move active until arrival so the piece remains visible while moving.
+        return true;
+    }
+
     return true;
 }
 
@@ -188,6 +181,11 @@ bool Game::isRunning() const {
 bool Game::isFinished() const {
     return state_ == GameState::Finished;
 }
+
+std::shared_ptr<IBoard> Game::getBoard() const {
+    return board_;
+}
+
 std::string Game::getPieceToken(const PiecePtr& piece) const {
     if (!piece) return ".";
     std::string token = (piece->color() == PlayerColor::White) ? "w" : "b";
@@ -222,13 +220,30 @@ void Game::wait(int ms) {
         Position to = pendingMove_->to;
         pendingMove_.reset();
 
-        // החזרת מצב הכלי ל-Idle כדי שיוכל לזוז שוב
         auto movingPiece = board_->pieceAt(from);
-        if (movingPiece.has_value()) {
-            movingPiece.value()->setState(PieceState::Idle);
+        if (!movingPiece.has_value()) {
+            return;
         }
 
-        tryMove(from, to); // ביצוע התנועה בפועל באופן מיידי
+        const auto targetPiece = board_->pieceAt(to);
+        const bool capturedKing = collisionSystem_->isCapture(from, to) &&
+                                  targetPiece.has_value() &&
+                                  targetPiece.value()->type() == PieceType::King;
+
+        board_->movePiece(from, to);
+
+        if (capturedKing) {
+            state_ = GameState::Finished;
+            return;
+        }
+
+        if (auto movedPiece = board_->pieceAt(to); movedPiece.has_value()) {
+            movedPiece.value()->setState(PieceState::Idle);
+            if (movedPiece.value()->type() == PieceType::Pawn &&
+                ruleEngine_->isPawnPromotion(to, movedPiece.value()->color())) {
+                board_->replacePiece(to, std::make_shared<Queen>(movedPiece.value()->color(), to));
+            }
+        }
     }
 }
 
