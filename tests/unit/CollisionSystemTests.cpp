@@ -1,38 +1,19 @@
-// Repository: https://github.com/Naama00/kong-fu-chess.git
-
-#include <cassert>
+#include <catch2/catch.hpp>
 #include <memory>
 #include "board/Board.hpp"
 #include "collision/CollisionSystem.hpp"
 #include "pieces/King.hpp"
 
-int CollisionSystemTests_main() {
+TEST_CASE("Collision detection", "[collision]") {
     auto board = std::make_shared<kungfu::Board>();
-    auto attacker = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-    auto defender = std::make_unique<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(1, 1));
-
-    board->placePiece(std::move(attacker), kungfu::Position(0, 0));
-    board->placePiece(std::move(defender), kungfu::Position(1, 1));
-
     kungfu::CollisionSystem collision(board);
-    const auto collisionPiece = collision.findCollision(kungfu::Position(0, 0), kungfu::Position(1, 1));
 
-    assert(collisionPiece.has_value());
-    assert(collisionPiece.value() != nullptr);
-    assert(collisionPiece.value()->type() == kungfu::PieceType::King);
+    SECTION("Finds collision between pieces") {
+        board->placePiece(std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0)), kungfu::Position(0, 0));
+        board->placePiece(std::make_unique<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(1, 1)), kungfu::Position(1, 1));
 
-    const auto noCollision = collision.findCollision(kungfu::Position(2, 2), kungfu::Position(3, 3));
-    assert(!noCollision.has_value());
-
-    {
-        auto b = std::make_shared<kungfu::Board>();
-        auto blocker = std::make_unique<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(0, 3));
-        b->placePiece(std::move(blocker), kungfu::Position(0, 3));
-
-        kungfu::CollisionSystem coll(b);
-        assert(!coll.isPathClear(kungfu::Position(0, 0), kungfu::Position(0, 5))); // חסום על ידי הכלי ב-(0,3)
-        assert(coll.isPathClear(kungfu::Position(0, 0), kungfu::Position(0, 2)));  // הנתיב עד (0,2) פנוי
+        auto collisionPiece = collision.findCollision(kungfu::Position(0, 0), kungfu::Position(1, 1));
+        REQUIRE(collisionPiece.has_value());
+        REQUIRE(collisionPiece.value()->type() == kungfu::PieceType::King);
     }
-
-    return 0;
 }

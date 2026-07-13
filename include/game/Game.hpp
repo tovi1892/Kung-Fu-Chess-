@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <iostream>
+#include <vector>
 #include "board/IBoard.hpp"
 #include "collision/CollisionSystem.hpp"
 #include "common/GameState.hpp"
@@ -14,11 +15,17 @@
 
 namespace kungfu {
 
-// מבנה פנימי לניהול תנועות מושהות בזמן אמת
+// מבנה מעודכן לניהול תנועות מושהות בזמן אמת צעד אחר צעד
 struct PendingMove {
     Position from;
     Position to;
+    Position currentPos;
+    int startTimeMs;
     int arrivalTimeMs;
+    int nextStepTimeMs;
+    int rowStep;
+    int colStep;
+    bool active = true;
 };
 
 class Game : public IGameInputTarget {
@@ -35,15 +42,12 @@ public:
     bool isRunning() const;
     bool isFinished() const;
 
-    // תנועה מיידית (עבור מנוע הליבה ובדיקות יחידה)
     bool tryMove(const Position& from, const Position& to);
 
-    // --- דרישות שלב ב' (Iteration 2) ---
     void click(int x, int y);
     void wait(int ms);
     void printBoard(std::ostream& out) const;
 
-    // --- דרישות שלב ג' והלאה (Airborne / Jumps) ---
     bool tryJump(const Position& cell);
     void resolveJump(const Position& cell);
     bool handleArrivalAtAirbornCell(const Position& cell, const Position& arrivingFrom);
@@ -67,9 +71,8 @@ private:
     std::unique_ptr<CollisionSystem> collisionSystem_;
     MovementSystem movementSystem_;
 
-    // משתני ניהול זמן וממשק אינטראקטיבי
     std::optional<Position> selectedPosition_;
-    std::optional<PendingMove> pendingMove_;
+    std::vector<PendingMove> pendingMoves_; // תמיכה בריבוי תנועות במקביל
     int currentTimeMs_ = 0;
     const std::shared_ptr<IGameInputAdapter> inputAdapter_;
 };

@@ -1,18 +1,17 @@
 ﻿cmake_minimum_required(VERSION 3.16)
 project(kung_fu_chess LANGUAGES CXX)
 
+include(FetchContent)
+FetchContent_Declare(
+  Catch2
+  GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+  GIT_TAG v2.13.9
+)
+FetchContent_MakeAvailable(Catch2)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
-set_source_files_properties(generated_single_file.cpp PROPERTIES
-    EXCLUDE_FROM_ALL TRUE
-    EXCLUDE_FROM_DEFAULT_BUILD TRUE
-)
-
-function(rename_test_main source_file symbol)
-    set_source_files_properties(${source_file} PROPERTIES COMPILE_DEFINITIONS "main=${symbol}")
-endfunction()
 
 add_library(kungfu_engine
     src/common/Position.cpp
@@ -47,19 +46,7 @@ target_include_directories(kungfu_integration_tests PRIVATE include)
 
 add_test(NAME integration_tests COMMAND kungfu_integration_tests)
 
-rename_test_main(tests/unit/PositionTests.cpp PositionTests_main)
-rename_test_main(tests/unit/PieceTests.cpp PieceTests_main)
-rename_test_main(tests/unit/BoardTests.cpp BoardTests_main)
-rename_test_main(tests/unit/RuleEngineTests.cpp RuleEngineTests_main)
-rename_test_main(tests/unit/PieceTypesTests.cpp PieceTypesTests_main)
-rename_test_main(tests/unit/MovementSystemTests.cpp MovementSystemTests_main)
-rename_test_main(tests/unit/CollisionSystemTests.cpp CollisionSystemTests_main)
-rename_test_main(tests/unit/GameTests.cpp GameTests_main)
-rename_test_main(tests/unit/PawnTests.cpp PawnTests_main)
-rename_test_main(tests/unit/JumpTests.cpp JumpTests_main)
-rename_test_main(tests/unit/ConfigAndBoundaryTests.cpp ConfigAndBoundaryTests_main)
-rename_test_main(tests/unit/UIInputAdapterTests.cpp UIInputAdapterTests_main)
-
+# הגדרת הטסטים של Catch2
 add_executable(kungfu_tests
     tests/unit/TestMain.cpp
     tests/unit/PositionTests.cpp
@@ -74,8 +61,11 @@ add_executable(kungfu_tests
     tests/unit/JumpTests.cpp
     tests/unit/ConfigAndBoundaryTests.cpp
     tests/unit/UIInputAdapterTests.cpp
+    tests/unit/GameRealTimeTests.cpp
 )
-target_link_libraries(kungfu_tests PRIVATE kungfu_engine)
+
+# הקישור חייב לבוא אחרי ה-add_executable
+target_link_libraries(kungfu_tests PRIVATE kungfu_engine Catch2::Catch2)
 target_include_directories(kungfu_tests PRIVATE include)
 
 enable_testing()

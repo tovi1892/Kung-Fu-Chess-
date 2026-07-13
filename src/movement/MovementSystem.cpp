@@ -14,7 +14,6 @@ bool MovementSystem::isInBounds(const Position& position, int rows, int cols) co
            position.col() >= 0 && position.col() < cols;
 }
 
-
 bool MovementSystem::isSamePosition(const Position& from, const Position& to) const {
     return from == to;
 }

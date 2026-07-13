@@ -66,19 +66,24 @@ bool Board::movePiece(const Position& from, const Position& to) {
 }
 
 bool Board::replacePiece(const Position& position, std::unique_ptr<Piece> newPiece) {
+    if (!newPiece) return false;
+
+    // מחפשים אם כבר קיים כלי במיקום הזה
     auto it = std::find_if(pieces_.begin(), pieces_.end(), [&](const std::unique_ptr<Piece>& p) {
         return p && p->position() == position;
     });
 
-    if (it == pieces_.end() || !newPiece) {
-        return false;
+    if (it != pieces_.end()) {
+        // אם מצאנו כלי, מחליפים אותו
+        newPiece->setPosition(position);
+        *it = std::move(newPiece);
+    } else {
+        // אם לא מצאנו כלי, מוסיפים את הכלי החדש לרשימה
+        newPiece->setPosition(position);
+        pieces_.push_back(std::move(newPiece));
     }
-
-    newPiece->setPosition(position);
-    *it = std::move(newPiece);
     return true;
 }
-
 std::vector<Piece*> Board::pieces() const {
     std::vector<Piece*> result;
     result.reserve(pieces_.size());

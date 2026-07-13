@@ -30,6 +30,7 @@ MoveValidation RuleEngine::validateMove(const Position& from, const Position& to
 
     const auto targetPiece = board_->pieceAt(to);
     const auto movingPiece = sourcePiece.value();
+    
     if (targetPiece.has_value() && targetPiece.value() && targetPiece.value()->color() == movingPiece->color()) {
         return {false, "friendly_destination"};
     }
@@ -38,6 +39,7 @@ MoveValidation RuleEngine::validateMove(const Position& from, const Position& to
         return {false, "illegal_piece_move"};
     }
 
+    // התיקון: בדיקות בטוחות של nullptr עבור הרגלי (Pawn)
     if (movingPiece->type() == PieceType::Pawn) {
         const int rowDelta = to.row() - from.row();
         const int colDelta = std::abs(to.col() - from.col());
@@ -45,7 +47,8 @@ MoveValidation RuleEngine::validateMove(const Position& from, const Position& to
 
         if (color == PlayerColor::White) {
             if (colDelta == 0) {
-                if (targetPiece.has_value()) {
+                // וידוא שהמשבצת לא ריקה לפני חסימה
+                if (targetPiece.has_value() && targetPiece.value() != nullptr) {
                     return {false, "illegal_piece_move"};
                 }
                 const bool oneStep = (rowDelta == 1);
@@ -53,12 +56,14 @@ MoveValidation RuleEngine::validateMove(const Position& from, const Position& to
                 return oneStep || twoStep ? MoveValidation{true, "ok"} : MoveValidation{false, "illegal_piece_move"};
             }
             if (colDelta == 1 && rowDelta == 1) {
-                const bool canCapture = targetPiece.has_value() && targetPiece.value()->color() != color;
+                // וידוא שהמשבצת לא ריקה לפני בדיקת צבע באכילה
+                const bool canCapture = targetPiece.has_value() && targetPiece.value() != nullptr && targetPiece.value()->color() != color;
                 return canCapture ? MoveValidation{true, "ok"} : MoveValidation{false, "illegal_piece_move"};
             }
         } else {
             if (colDelta == 0) {
-                if (targetPiece.has_value()) {
+                // וידוא שהמשבצת לא ריקה לפני חסימה
+                if (targetPiece.has_value() && targetPiece.value() != nullptr) {
                     return {false, "illegal_piece_move"};
                 }
                 const bool oneStep = (rowDelta == -1);
@@ -66,7 +71,8 @@ MoveValidation RuleEngine::validateMove(const Position& from, const Position& to
                 return oneStep || twoStep ? MoveValidation{true, "ok"} : MoveValidation{false, "illegal_piece_move"};
             }
             if (colDelta == 1 && rowDelta == -1) {
-                const bool canCapture = targetPiece.has_value() && targetPiece.value()->color() != color;
+                // וידוא שהמשבצת לא ריקה לפני בדיקת צבע באכילה
+                const bool canCapture = targetPiece.has_value() && targetPiece.value() != nullptr && targetPiece.value()->color() != color;
                 return canCapture ? MoveValidation{true, "ok"} : MoveValidation{false, "illegal_piece_move"};
             }
         }

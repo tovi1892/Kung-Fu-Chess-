@@ -9,7 +9,7 @@ namespace kungfu {
 class MovementSystem {
 public:
     bool isInBounds(const Position& position) const;
-    bool isInBounds(const Position& position, int rows, int cols) const; // פונקציה חדשה
+    bool isInBounds(const Position& position, int rows, int cols) const;
     bool isSamePosition(const Position& from, const Position& to) const;
     bool canMoveTo(const Position& from, const Position& to) const;
     bool isValidMove(const Piece& piece, const Position& from, const Position& to) const;
@@ -18,4 +18,3 @@ public:
 };
 
 }  // namespace kungfu
-

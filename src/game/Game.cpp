@@ -1,6 +1,7 @@
 #include "game/Game.hpp"
 #include <algorithm>
 #include <stdexcept>
+#include <cmath>
 
 #include "board/Board.hpp"
 #include "common/GameConfig.hpp"
@@ -50,12 +51,17 @@ Game::Game(std::shared_ptr<IBoard> board,
 }
 
 bool Game::selectPiece(const Position& pos) {
-    if (state_ != GameState::Running || pendingMove_.has_value()) {
+    if (state_ != GameState::Running) {
         return false;
     }
 
     const auto piece = board_->pieceAt(pos);
     if (!piece.has_value()) {
+        return false;
+    }
+
+    // מניעת בחירה של כלי שנמצא כרגע בתנועה
+    if (piece.value()->state() == PieceState::Moving) {
         return false;
     }
 
@@ -80,7 +86,7 @@ bool Game::selectPiece(const Position& pos) {
 }
 
 bool Game::requestMove(const Position& from, const Position& to) {
-    if (state_ != GameState::Running || pendingMove_.has_value()) {
+    if (state_ != GameState::Running) {
         return false;
     }
 
@@ -89,7 +95,7 @@ bool Game::requestMove(const Position& from, const Position& to) {
     }
 
     const auto movingPieceOpt = board_->pieceAt(from);
-    if (!movingPieceOpt.has_value()) {
+    if (!movingPieceOpt.has_value() || movingPieceOpt.value() == nullptr) {
         return false;
     }
     Piece* movingPiece = movingPieceOpt.value();
@@ -114,41 +120,28 @@ bool Game::requestMove(const Position& from, const Position& to) {
         return false;
     }
 
-    const auto targetPieceOpt = board_->pieceAt(to);
-    Piece* targetPiece = targetPieceOpt.has_value() ? targetPieceOpt.value() : nullptr;
+    int rowDelta = to.row() - from.row();
+    int colDelta = to.col() - from.col();
+    int distance = std::max(std::abs(rowDelta), std::abs(colDelta));
+    int rStep = (rowDelta == 0) ? 0 : (rowDelta > 0 ? 1 : -1);
+    int cStep = (colDelta == 0) ? 0 : (colDelta > 0 ? 1 : -1);
 
-    if (targetPiece != nullptr && targetPiece->isAirborne() &&
-        targetPiece->color() == movingPiece->color()) {
-        return false;
-    }
+    // יצירת תנועה מושהית חדשה והכנסתה למאגר התנועות הפעילות במקביל
+    PendingMove pm{
+        from,
+        to,
+        from,
+        currentTimeMs_,
+        currentTimeMs_ + (distance * 1000),
+        currentTimeMs_ + 1000,
+        rStep,
+        cStep,
+        true
+    };
 
-    if (targetPiece != nullptr && targetPiece->isAirborne() &&
-        targetPiece->color() != movingPiece->color()) {
-        movingPiece->setState(PieceState::Captured);
-        board_->removePiece(from);
-        selectedPosition_.reset();
-        return true;
-    }
-
-    bool capturedKing = false;
-    if (targetPiece != nullptr) {
-        capturedKing = collisionSystem_->isCapture(from, to) &&
-                       targetPiece->type() == PieceType::King;
-    }
-
-    int rowDelta = std::abs(to.row() - from.row());
-    int colDelta = std::abs(to.col() - from.col());
-    int distance = std::max(rowDelta, colDelta);
-
-    pendingMove_ = PendingMove{from, to, currentTimeMs_ + (distance * 1000)};
+    pendingMoves_.push_back(pm);
     movingPiece->setState(PieceState::Moving);
     selectedPosition_.reset();
-
-    if (capturedKing) {
-        // The king capture will be resolved when the move completes.
-        // Keep the pending move active until arrival so the piece remains visible while moving.
-        return true;
-    }
 
     return true;
 }
@@ -221,57 +214,94 @@ std::string Game::getPieceToken(const Piece* piece) const {
     return token;
 }
 
-// מימוש פקודת click x y
 void Game::click(int x, int y) {
     if (inputAdapter_) {
         inputAdapter_->handleClick(x, y);
     }
 }
 
-// מימוש פקודת wait ms
+// לולאת ניהול הזמן וההתנגשויות המשוכללת בזמן אמת (Tick-by-Tick)
 void Game::wait(int ms) {
     if (state_ != GameState::Running) {
         return;
     }
-    currentTimeMs_ += ms;
 
-    // בדיקה האם הגיע זמן פתרון התנועה המושהית
-    if (pendingMove_.has_value() && currentTimeMs_ >= pendingMove_->arrivalTimeMs) {
-        Position from = pendingMove_->from;
-        Position to = pendingMove_->to;
-        pendingMove_.reset();
+    for (int t = 0; t < ms; ++t) {
+        currentTimeMs_++;
 
-        auto movingPiece = board_->pieceAt(from);
-        if (!movingPiece.has_value()) {
-            return;
-        }
+        for (size_t i = 0; i < pendingMoves_.size(); ++i) {
+            auto& pm = pendingMoves_[i];
+            if (!pm.active) continue;
 
-        const auto targetPieceOpt = board_->pieceAt(to);
-        Piece* targetPiece = targetPieceOpt.has_value() ? targetPieceOpt.value() : nullptr;
-        bool capturedKing = false;
-        if (targetPiece != nullptr && targetPiece->color() != movingPiece.value()->color()) {
-            capturedKing = targetPiece->type() == PieceType::King;
-        }
+            // בדיקה האם הגיע הזמן לבצע את הצעד הבא או להגיע ליעד
+            if (currentTimeMs_ == pm.nextStepTimeMs || currentTimeMs_ == pm.arrivalTimeMs) {
+                Position nextPos(pm.currentPos.row() + pm.rowStep, pm.currentPos.col() + pm.colStep);
 
-        captureEnemyAtDestination(*board_, to, movingPiece.value());
-        board_->movePiece(from, to);
+                auto targetPieceOpt = board_->pieceAt(nextPos);
+                if (targetPieceOpt.has_value()) {
+                    Piece* target = targetPieceOpt.value();
+                    auto currentPieceOpt = board_->pieceAt(pm.currentPos);
+                    
+                    if (currentPieceOpt.has_value() && target->color() == currentPieceOpt.value()->color()) {
+                        // --- חוק 1: כלים מאותו צבע נפגשים ---
+                        // הכלי שהגיע מאוחר יותר נתקע במשבצת הקודמת (currentPos) וחוזר למצב Idle
+                        currentPieceOpt.value()->setState(PieceState::Idle);
+                        pm.active = false;
+                        continue;
+                    } else {
+                        // --- חוק 2: כלים מצבעים שונים נפגשים ---
+                        // הכלי שהגיע מאוחר יותר אוכל את הכלי שהגיע קודם
+                        bool capturedKing = (target->type() == PieceType::King);
 
-        if (capturedKing) {
-            state_ = GameState::Finished;
-            return;
-        }
+                        // ביטול התנועה של הכלי שנאכל אם הוא היה באמצע תנועה
+                        for (auto& otherPm : pendingMoves_) {
+                            if (otherPm.active && otherPm.currentPos == nextPos) {
+                                otherPm.active = false;
+                            }
+                        }
 
-        if (auto movedPiece = board_->pieceAt(to); movedPiece.has_value()) {
-            movedPiece.value()->setState(PieceState::Idle);
-            if (movedPiece.value()->type() == PieceType::Pawn &&
-                ruleEngine_->isPawnPromotion(to, movedPiece.value()->color())) {
-                board_->replacePiece(to, std::make_unique<Queen>(movedPiece.value()->color(), to));
+                        board_->removePiece(nextPos);
+                        board_->movePiece(pm.currentPos, nextPos);
+                        pm.currentPos = nextPos;
+
+                        if (capturedKing) {
+                            state_ = GameState::Finished;
+                            pm.active = false;
+                            return;
+                        }
+                    }
+                } else {
+                    // המשבצת הבאה פנויה - הכלי מתקדם כרגיל על הלוח
+                    board_->movePiece(pm.currentPos, nextPos);
+                    pm.currentPos = nextPos;
+                }
+
+                // בדיקת סיום מסלול והגעה ליעד הסופי
+                if (pm.currentPos == pm.to || currentTimeMs_ >= pm.arrivalTimeMs) {
+                    pm.active = false;
+                    if (auto movedPiece = board_->pieceAt(pm.to); movedPiece.has_value()) {
+                        movedPiece.value()->setState(PieceState::Idle);
+                        if (movedPiece.value()->type() == PieceType::Pawn &&
+                            ruleEngine_->isPawnPromotion(pm.to, movedPiece.value()->color())) {
+                            board_->replacePiece(pm.to, std::make_unique<Queen>(movedPiece.value()->color(), pm.to));
+                        }
+                    }
+                } else {
+                    pm.nextStepTimeMs += 1000;
+                }
             }
         }
+
+        // ניקוי תנועות שהסתיימו או בוטלו מהווקטור
+        pendingMoves_.erase(
+            std::remove_if(pendingMoves_.begin(), pendingMoves_.end(),
+                           [](const PendingMove& pm) { return !pm.active; }),
+            pendingMoves_.end());
+
+        if (state_ == GameState::Finished) return;
     }
 }
 
-// מימוש פקודת print board
 void Game::printBoard(std::ostream& out) const {
     auto concreteBoard = std::dynamic_pointer_cast<Board>(board_);
     int maxRows = concreteBoard ? concreteBoard->rows() : GameConfig::kBoardSize;
@@ -302,7 +332,6 @@ bool Game::tryMove(const Position& from, const Position& to) {
         return false;
     }
 
-    // A moving piece cannot initiate a second move.
     const auto sourcePieceOpt = board_->pieceAt(from);
     if (sourcePieceOpt.has_value() && sourcePieceOpt.value()->state() == PieceState::Moving) {
         return false;
@@ -317,32 +346,26 @@ bool Game::tryMove(const Position& from, const Position& to) {
         return false;
     }
 
-    // --- עדכון עבור כלים מחליקים (מלכה, צריח, רץ) ---
-    // ודואים שהנתיב שלהם פנוי מכלים אחרים (פרש ומלך פטורים מבדיקה זו)
     PieceType type = sourcePiece->type();
     if (type == PieceType::Queen || type == PieceType::Rook || type == PieceType::Bishop) {
         if (!collisionSystem_->isPathClear(from, to)) {
-            return false; // הנתיב חסום על ידי כלי אחר
+            return false;
         }
     }
 
-    // For a double-step pawn move, the intermediate square must be empty.
     const auto middle = movementSystem_.pawnDoubleStepMiddle(from, to);
     if (middle.has_value() && !collisionSystem_->isPathClear(from, to)) {
         return false;
     }
 
-    // If the destination holds an airborne friendly piece, it blocks the move.
     const auto targetPiece = board_->pieceAt(to);
     if (targetPiece.has_value() && targetPiece.value()->isAirborne() &&
         targetPiece.value()->color() == sourcePiece->color()) {
         return false;
     }
 
-    // If an enemy piece is airborne at the destination, it captures the arriving piece.
     if (targetPiece.has_value() && targetPiece.value()->isAirborne() &&
         targetPiece.value()->color() != sourcePiece->color()) {
-        // Airborne captures: remove the arriving piece, airborne stays.
         sourcePiece->setState(PieceState::Captured);
         board_->removePiece(from);
         return true;
@@ -364,7 +387,6 @@ bool Game::tryMove(const Position& from, const Position& to) {
         return true;
     }
 
-    // Delegate promotion decision and piece replacement to the rule engine.
     const auto movedPiece = board_->pieceAt(to);
     if (movedPiece.has_value() &&
         movedPiece.value()->type() == PieceType::Pawn &&
@@ -386,7 +408,6 @@ bool Game::tryJump(const Position& cell) {
     }
 
     const PieceState pieceState = piece.value()->state();
-    // A moving or already-airborne or captured piece cannot jump.
     if (pieceState == PieceState::Moving ||
         pieceState == PieceState::Airborne ||
         pieceState == PieceState::Captured) {
@@ -402,7 +423,6 @@ void Game::resolveJump(const Position& cell) {
     if (!piece.has_value() || !piece.value()->isAirborne()) {
         return;
     }
-    // No enemy arrived — piece lands normally (state back to Idle).
     piece.value()->setState(PieceState::Idle);
 }
 
@@ -417,12 +437,10 @@ bool Game::handleArrivalAtAirbornCell(const Position& cell, const Position& arri
         return false;
     }
 
-    // Same color — no capture.
     if (airbornePiece.value()->color() == arrivingPiece.value()->color()) {
         return false;
     }
 
-    // Airborne captures the arriving enemy: remove it, airborne piece stays.
     board_->removePiece(arrivingFrom);
     airbornePiece.value()->setState(PieceState::Idle);
 

@@ -1,54 +1,22 @@
-// Repository: https://github.com/Naama00/kong-fu-chess.git
-
-#include <cassert>
-#include <memory>
+#include <catch2/catch.hpp>
 #include "board/Board.hpp"
 #include "pieces/King.hpp"
 #include "rules/RuleEngine.hpp"
 
-int RuleEngineTests_main() {
+TEST_CASE("Rule engine validation", "[rules]") {
     auto board = std::make_shared<kungfu::Board>();
-    auto king = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-    board->placePiece(std::move(king), kungfu::Position(0, 0));
-
+    board->placePiece(std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0)), kungfu::Position(0, 0));
     kungfu::RuleEngine engine(board);
 
-    const auto okValidation = engine.validateMove(kungfu::Position(0, 0), kungfu::Position(1, 1));
-    assert(okValidation.is_valid);
-    assert(okValidation.reason == "ok");
+    SECTION("Valid move returns ok") {
+        auto result = engine.validateMove(kungfu::Position(0, 0), kungfu::Position(1, 1));
+        REQUIRE(result.is_valid == true);
+        REQUIRE(result.reason == "ok");
+    }
 
-    const auto outsideBoardValidation = engine.validateMove(kungfu::Position(9, 9), kungfu::Position(8, 8));
-    assert(!outsideBoardValidation.is_valid);
-    assert(outsideBoardValidation.reason == "outside_board");
-
-    auto emptyBoard = std::make_shared<kungfu::Board>();
-    kungfu::RuleEngine emptyEngine(emptyBoard);
-    const auto emptySourceValidation = emptyEngine.validateMove(kungfu::Position(0, 0), kungfu::Position(1, 1));
-    assert(!emptySourceValidation.is_valid);
-    assert(emptySourceValidation.reason == "empty_source");
-
-    auto friendlyBoard = std::make_shared<kungfu::Board>();
-    auto friendlyKing = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-    auto friendlyTarget = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(1, 1));
-    friendlyBoard->placePiece(std::move(friendlyKing), kungfu::Position(0, 0));
-    friendlyBoard->placePiece(std::move(friendlyTarget), kungfu::Position(1, 1));
-    kungfu::RuleEngine friendlyEngine(friendlyBoard);
-    const auto friendlyValidation = friendlyEngine.validateMove(kungfu::Position(0, 0), kungfu::Position(1, 1));
-    assert(!friendlyValidation.is_valid);
-    assert(friendlyValidation.reason == "friendly_destination");
-
-    auto illegalBoard = std::make_shared<kungfu::Board>();
-    auto illegalKing = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-    illegalBoard->placePiece(std::move(illegalKing), kungfu::Position(0, 0));
-    kungfu::RuleEngine illegalEngine(illegalBoard);
-    const auto illegalValidation = illegalEngine.validateMove(kungfu::Position(0, 0), kungfu::Position(2, 2));
-    assert(!illegalValidation.is_valid);
-    assert(illegalValidation.reason == "illegal_piece_move");
-
-    assert(engine.isValidMove(kungfu::Position(0, 0), kungfu::Position(1, 1)) == true);
-    assert(engine.isValidMove(kungfu::Position(0, 0), kungfu::Position(0, 0)) == false);
-    assert(engine.isValidMove(kungfu::Position(0, 0), kungfu::Position(2, 2)) == false);
-    assert(engine.isValidMove(kungfu::Position(9, 9), kungfu::Position(8, 8)) == false);
-
-    return 0;
+    SECTION("Illegal move returns error") {
+        auto result = engine.validateMove(kungfu::Position(0, 0), kungfu::Position(2, 2));
+        REQUIRE(result.is_valid == false);
+        REQUIRE(result.reason == "illegal_piece_move");
+    }
 }

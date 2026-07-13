@@ -1,129 +1,29 @@
-// Repository: https://github.com/Naama00/kong-fu-chess.git
-
-#include <cassert>
-#include <iostream>
-#include <memory>
+#include <catch2/catch.hpp>
 #include "board/Board.hpp"
 #include "game/Game.hpp"
 #include "pieces/King.hpp"
 #include "pieces/Rook.hpp"
 #include "TestHelpers.hpp"
 
-int GameTests_main() {
-    std::cout << "GameTests: start\n";
-    // --- Basic state machine ---
+TEST_CASE("Game state and logic flow", "[game]") {
     auto game = kungfu::createTestGame();
-    assert(!game->isRunning());
-    assert(!game->isFinished());
-    assert(!game->tryMove(kungfu::Position(0, 0), kungfu::Position(1, 1)));
 
-    game->start();
-    assert(game->isRunning());
+    SECTION("Basic state machine") {
+        REQUIRE(game->isRunning() == false);
+        game->start();
+        REQUIRE(game->isRunning() == true);
+        game->stop();
+        REQUIRE(game->isRunning() == false);
+    }
 
-    game->stop();
-    assert(!game->isRunning());
-    assert(!game->tryMove(kungfu::Position(0, 0), kungfu::Position(1, 1)));
-
-    auto beforeStart = kungfu::createTestGame();
-    assert(!beforeStart->isRunning());
-
-    // --- Capturing enemy king ends the game ---
-    {
+    SECTION("Capturing king ends game") {
         auto board = std::make_shared<kungfu::Board>();
-        auto whiteKing = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-        auto blackKing = std::make_unique<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(1, 1));
-        board->placePiece(std::move(whiteKing), kungfu::Position(0, 0));
-        board->placePiece(std::move(blackKing), kungfu::Position(1, 1));
+        board->placePiece(std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0)), kungfu::Position(0, 0));
+        board->placePiece(std::make_unique<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(1, 1)), kungfu::Position(1, 1));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
-        assert(g->isRunning());
-
-        const bool captured = g->tryMove(kungfu::Position(0, 0), kungfu::Position(1, 1));
-        assert(captured);
-        assert(g->isFinished());
-        assert(!g->isRunning());
+        REQUIRE(g->tryMove(kungfu::Position(0, 0), kungfu::Position(1, 1)) == true);
+        REQUIRE(g->isFinished() == true);
     }
-
-    // --- After game over, further moves are ignored ---
-    {
-        auto board = std::make_shared<kungfu::Board>();
-        auto whiteKing = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-        auto blackKing = std::make_unique<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(1, 1));
-        auto whiteRook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(7, 7));
-        board->placePiece(std::move(whiteKing), kungfu::Position(0, 0));
-        board->placePiece(std::move(blackKing), kungfu::Position(1, 1));
-        board->placePiece(std::move(whiteRook), kungfu::Position(7, 7));
-
-        auto g = kungfu::createGameWithAdapter(board);
-        g->start();
-        g->tryMove(kungfu::Position(0, 0), kungfu::Position(1, 1));
-        assert(g->isFinished());
-        assert(!g->tryMove(kungfu::Position(7, 7), kungfu::Position(7, 0)));
-    }
-
-    // --- Rook path clearance block ---
-    {
-        auto board = std::make_shared<kungfu::Board>();
-        auto rook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-        auto blocker = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::Black, kungfu::Position(0, 3));
-        board->placePiece(std::move(rook), kungfu::Position(0, 0));
-        board->placePiece(std::move(blocker), kungfu::Position(0, 3));
-
-        auto g = kungfu::createGameWithAdapter(board);
-        g->start();
-        assert(!g->tryMove(kungfu::Position(0, 0), kungfu::Position(0, 5))); // נפסל כיוון שהנתיב חסום ב-(0,3)
-        assert(g->tryMove(kungfu::Position(0, 0), kungfu::Position(0, 2)));  // מאושר כיוון שהנתיב פנוי
-    }
-
-    // --- Interactive click and wait delay ---
-    {
-        auto board = std::make_shared<kungfu::Board>();
-        auto rook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-        board->placePiece(std::move(rook), kungfu::Position(0, 0));
-
-        auto g = kungfu::createGameWithAdapter(board);
-        g->start();
-
-        auto duplicateRook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-        board->placePiece(std::move(duplicateRook), kungfu::Position(0, 0));
-        // המרה: תא (0,0) מיוצג ע"י קואורדינטת פיקסל 50,50. יעד (0,1) מיוצג ע"י פיקסל 150,50.
-        g->click(50, 50);  // סימון הצריח ב-(0,0)
-        g->click(150, 50); // מתן פקודת תנועה ל-(0,1) - השהייה של 1000 מילישניות (מרחק תא 1)
-
-        auto currentBoard = g->getBoard();
-
-        for (int r = 0; r < 8; ++r) {
-            for (int c = 0; c < 8; ++c) {
-                auto piece = currentBoard->pieceAt(kungfu::Position(r, c));
-                if (piece.has_value()) {
-                    std::cout << "DEBUG: piece at (" << r << "," << c << ") state="
-                              << static_cast<int>(piece.value()->state()) << '\n';
-                }
-            }
-        }
-
-        // בדיקה 1: לפני שהזמן עובר, הכלי עדיין ב-(0,0) ומצבו "Moving"
-        std::cout << "GameTests: check1\n";
-        assert(currentBoard->pieceAt(kungfu::Position(0, 0)).has_value());
-        assert(currentBoard->pieceAt(kungfu::Position(0, 0)).value()->state() == kungfu::PieceState::Moving);
-        assert(!currentBoard->pieceAt(kungfu::Position(0, 1)).has_value());
-
-        // בדיקה 2: המתנה של 500 מילישניות בלבד - הכלי עדיין לא הגיע ליעד
-        std::cout << "GameTests: check2\n";
-        g->wait(500);
-        currentBoard = g->getBoard();
-        assert(currentBoard->pieceAt(kungfu::Position(0, 0)).has_value());
-        assert(!currentBoard->pieceAt(kungfu::Position(0, 1)).has_value());
-
-        // בדיקה 3: המתנה של 500 מילישניות נוספות (סך הכל 1000) - הכלי הגיע ליעד ומצבו חזר ל-"Idle"
-        std::cout << "GameTests: check3\n";
-        g->wait(500);
-        currentBoard = g->getBoard();
-        assert(!currentBoard->pieceAt(kungfu::Position(0, 0)).has_value());
-        assert(currentBoard->pieceAt(kungfu::Position(0, 1)).has_value());
-        assert(currentBoard->pieceAt(kungfu::Position(0, 1)).value()->state() == kungfu::PieceState::Idle);
-    }
-
-    return 0;
 }

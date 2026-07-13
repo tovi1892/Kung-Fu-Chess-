@@ -1,11 +1,9 @@
-#include <cassert>
+#include <catch2/catch.hpp>
 #include <optional>
-
 #include "game/IGameInputAdapter.hpp"
 #include "game/UIInputAdapter.hpp"
 
 namespace {
-
 class MockGame : public kungfu::IGameInputTarget {
 public:
     bool running = true;
@@ -25,17 +23,14 @@ public:
     std::optional<kungfu::Position> selectedPosition() const override { return std::nullopt; }
     bool isPositionInBounds(const kungfu::Position& pos) const override { return true; }
 };
+}
 
-}  // namespace
-
-int UIInputAdapterTests_main() {
+TEST_CASE("UIInputAdapter handles clicks correctly", "[ui]") {
     MockGame game;
     kungfu::UIInputAdapter adapter(game);
 
     adapter.handleClick(50, 50);
 
-    assert(game.selectCalled);
-    assert(game.lastSelectedPos == kungfu::Position(0, 0));
-
-    return 0;
+    REQUIRE(game.selectCalled == true);
+    REQUIRE(game.lastSelectedPos == kungfu::Position(0, 0));
 }

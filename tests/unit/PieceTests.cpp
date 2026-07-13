@@ -1,18 +1,16 @@
-// Repository: https://github.com/Naama00/kong-fu-chess.git
-
-#include <cassert>
+#include <catch2/catch.hpp>
 #include "pieces/King.hpp"
 
-int PieceTests_main() {
+TEST_CASE("Piece basic properties", "[piece]") {
     kungfu::King piece(kungfu::PlayerColor::White, kungfu::Position(0, 0));
 
-    assert(piece.type() == kungfu::PieceType::King);
-    assert(piece.color() == kungfu::PlayerColor::White);
-    assert(piece.position() == kungfu::Position(0, 0));
-    assert(piece.isMovable());
+    REQUIRE(piece.type() == kungfu::PieceType::King);
+    REQUIRE(piece.color() == kungfu::PlayerColor::White);
+    REQUIRE(piece.position() == kungfu::Position(0, 0));
+    REQUIRE(piece.isMovable() == true);
 
-    piece.setPosition(kungfu::Position(1, 1));
-    assert(piece.position() == kungfu::Position(1, 1));
-
-    return 0;
+    SECTION("Setting position updates correctly") {
+        piece.setPosition(kungfu::Position(1, 1));
+        REQUIRE(piece.position() == kungfu::Position(1, 1));
+    }
 }

@@ -24,6 +24,7 @@ public:
     bool movePiece(const Position& from, const Position& to) override;
     bool replacePiece(const Position& position, std::unique_ptr<Piece> newPiece) override;
 
+
     std::vector<Piece*> pieces() const;
 
 private:

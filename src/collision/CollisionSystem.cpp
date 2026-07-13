@@ -18,7 +18,8 @@ bool CollisionSystem::isCapture(const Position& from, const Position& to) const 
     const auto sourcePiece = board_->pieceAt(from);
     const auto targetPiece = board_->pieceAt(to);
 
-    if (!sourcePiece.has_value() || !targetPiece.has_value()) {
+    if (!sourcePiece.has_value() || !sourcePiece.value() || 
+        !targetPiece.has_value() || !targetPiece.value()) {
         return false;
     }
     return sourcePiece.value()->color() != targetPiece.value()->color();
@@ -31,7 +32,8 @@ bool CollisionSystem::isFriendlyBlock(const Position& from, const Position& to) 
     const auto sourcePiece = board_->pieceAt(from);
     const auto targetPiece = board_->pieceAt(to);
 
-    if (!sourcePiece.has_value() || !targetPiece.has_value()) {
+    if (!sourcePiece.has_value() || !sourcePiece.value() || 
+        !targetPiece.has_value() || !targetPiece.value()) {
         return false;
     }
     return sourcePiece.value()->color() == targetPiece.value()->color();
@@ -49,7 +51,9 @@ bool CollisionSystem::isPathClear(const Position& from, const Position& to) cons
     int r = from.row() + rowStep;
     int c = from.col() + colStep;
     while (r != to.row() || c != to.col()) {
-        if (board_->pieceAt(Position(r, c)).has_value()) {
+        auto pieceOpt = board_->pieceAt(Position(r, c));
+        // תיקון קריטי: משבצת נחשבת חסומה רק אם יש בה פוינטר תקני של כלי משחק
+        if (pieceOpt.has_value() && pieceOpt.value() != nullptr) {
             return false;
         }
         r += rowStep;
