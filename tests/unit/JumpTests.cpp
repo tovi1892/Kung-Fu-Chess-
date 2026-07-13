@@ -13,38 +13,40 @@ int JumpTests_main() {
     // --- tryJump sets piece to Airborne ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto rook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
-        board->placePiece(rook, kungfu::Position(3, 3));
+        auto rook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
+        board->placePiece(std::move(rook), kungfu::Position(3, 3));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
         assert(g->tryJump(kungfu::Position(3, 3)));
-        assert(rook->isAirborne());
+        auto* rookPtr = board->pieceAt(kungfu::Position(3, 3)).value();
+        assert(rookPtr->isAirborne());
         assert(board->pieceAt(kungfu::Position(3, 3)).has_value());  // still on board
     }
 
     // --- resolveJump resets piece to Idle (no enemy arrived) ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto rook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
-        board->placePiece(rook, kungfu::Position(3, 3));
+        auto rook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
+        board->placePiece(std::move(rook), kungfu::Position(3, 3));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
         g->tryJump(kungfu::Position(3, 3));
         g->resolveJump(kungfu::Position(3, 3));
-        assert(!rook->isAirborne());
-        assert(rook->state() == kungfu::PieceState::Idle);
+        auto* rookPtr = board->pieceAt(kungfu::Position(3, 3)).value();
+        assert(!rookPtr->isAirborne());
+        assert(rookPtr->state() == kungfu::PieceState::Idle);
         assert(board->pieceAt(kungfu::Position(3, 3)).has_value());
     }
 
     // --- Airborne piece captures arriving enemy ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto whiteRook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
-        auto blackRook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::Black, kungfu::Position(3, 0));
-        board->placePiece(whiteRook, kungfu::Position(3, 3));
-        board->placePiece(blackRook, kungfu::Position(3, 0));
+        auto whiteRook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
+        auto blackRook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::Black, kungfu::Position(3, 0));
+        board->placePiece(std::move(whiteRook), kungfu::Position(3, 3));
+        board->placePiece(std::move(blackRook), kungfu::Position(3, 0));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -60,10 +62,10 @@ int JumpTests_main() {
     // --- Airborne piece does NOT capture friendly arriving piece ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto whiteRook1 = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
-        auto whiteRook2 = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 0));
-        board->placePiece(whiteRook1, kungfu::Position(3, 3));
-        board->placePiece(whiteRook2, kungfu::Position(3, 0));
+        auto whiteRook1 = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
+        auto whiteRook2 = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 0));
+        board->placePiece(std::move(whiteRook1), kungfu::Position(3, 3));
+        board->placePiece(std::move(whiteRook2), kungfu::Position(3, 0));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -77,10 +79,11 @@ int JumpTests_main() {
     // --- A moving piece cannot jump ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto rook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
-        board->placePiece(rook, kungfu::Position(3, 3));
+        auto rook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
+        board->placePiece(std::move(rook), kungfu::Position(3, 3));
 
-        rook->setState(kungfu::PieceState::Moving);
+        auto* rookPtr = board->pieceAt(kungfu::Position(3, 3)).value();
+        rookPtr->setState(kungfu::PieceState::Moving);
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -91,10 +94,11 @@ int JumpTests_main() {
     // --- A captured piece cannot jump ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto rook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
-        board->placePiece(rook, kungfu::Position(3, 3));
+        auto rook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
+        board->placePiece(std::move(rook), kungfu::Position(3, 3));
 
-        rook->setState(kungfu::PieceState::Captured);
+        auto* rookPtr = board->pieceAt(kungfu::Position(3, 3)).value();
+        rookPtr->setState(kungfu::PieceState::Captured);
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -104,10 +108,10 @@ int JumpTests_main() {
     // --- Airborne capture of enemy king ends the game ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto whiteRook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-        auto blackKing = std::make_shared<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(0, 7));
-        board->placePiece(whiteRook, kungfu::Position(0, 0));
-        board->placePiece(blackKing, kungfu::Position(0, 7));
+        auto whiteRook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
+        auto blackKing = std::make_unique<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(0, 7));
+        board->placePiece(std::move(whiteRook), kungfu::Position(0, 0));
+        board->placePiece(std::move(blackKing), kungfu::Position(0, 7));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -119,8 +123,8 @@ int JumpTests_main() {
     // --- Already-airborne piece cannot jump again ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto rook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
-        board->placePiece(rook, kungfu::Position(3, 3));
+        auto rook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(3, 3));
+        board->placePiece(std::move(rook), kungfu::Position(3, 3));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();

@@ -8,25 +8,26 @@
 
 int CollisionSystemTests_main() {
     auto board = std::make_shared<kungfu::Board>();
-    auto attacker = std::make_shared<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-    auto defender = std::make_shared<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(1, 1));
+    auto attacker = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
+    auto defender = std::make_unique<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(1, 1));
 
-    board->placePiece(attacker, kungfu::Position(0, 0));
-    board->placePiece(defender, kungfu::Position(1, 1));
+    board->placePiece(std::move(attacker), kungfu::Position(0, 0));
+    board->placePiece(std::move(defender), kungfu::Position(1, 1));
 
     kungfu::CollisionSystem collision(board);
     const auto collisionPiece = collision.findCollision(kungfu::Position(0, 0), kungfu::Position(1, 1));
 
     assert(collisionPiece.has_value());
-    assert(collisionPiece.value() == defender);
+    assert(collisionPiece.value() != nullptr);
+    assert(collisionPiece.value()->type() == kungfu::PieceType::King);
 
     const auto noCollision = collision.findCollision(kungfu::Position(2, 2), kungfu::Position(3, 3));
     assert(!noCollision.has_value());
 
     {
         auto b = std::make_shared<kungfu::Board>();
-        auto blocker = std::make_shared<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(0, 3));
-        b->placePiece(blocker, kungfu::Position(0, 3));
+        auto blocker = std::make_unique<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(0, 3));
+        b->placePiece(std::move(blocker), kungfu::Position(0, 3));
 
         kungfu::CollisionSystem coll(b);
         assert(!coll.isPathClear(kungfu::Position(0, 0), kungfu::Position(0, 5))); // חסום על ידי הכלי ב-(0,3)

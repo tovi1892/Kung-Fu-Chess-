@@ -4,7 +4,7 @@ namespace kungfu {
 
 CollisionSystem::CollisionSystem(BoardPtr board) : board_(std::move(board)) {}
 
-std::optional<PiecePtr> CollisionSystem::findCollision(const Position& from, const Position& to) const {
+std::optional<Piece*> CollisionSystem::findCollision(const Position& from, const Position& to) const {
     if (!board_) {
         return std::nullopt;
     }

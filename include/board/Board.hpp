@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+#include <memory>
 #include <vector>
 #include "board/IBoard.hpp"
 #include "common/Enums.hpp"
@@ -16,16 +18,16 @@ public:
     int rows() const { return rows_; }
     int cols() const { return cols_; }
 
-    std::optional<PiecePtr> pieceAt(const Position& position) const override;
-    bool placePiece(const PiecePtr& piece, const Position& position) override;
+    std::optional<Piece*> pieceAt(const Position& position) const override;
+    bool placePiece(std::unique_ptr<Piece> piece, const Position& position) override;
     bool removePiece(const Position& position) override;
     bool movePiece(const Position& from, const Position& to) override;
-    bool replacePiece(const Position& position, const PiecePtr& newPiece) override;
+    bool replacePiece(const Position& position, std::unique_ptr<Piece> newPiece) override;
 
-    std::vector<PiecePtr> pieces() const;
+    std::vector<Piece*> pieces() const;
 
 private:
-    std::vector<PiecePtr> pieces_;
+    std::vector<std::unique_ptr<Piece>> pieces_;
     int rows_ = 8; // ברירת מחדל 8
     int cols_ = 8; // ברירת מחדל 8
 };

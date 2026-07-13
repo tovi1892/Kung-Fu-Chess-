@@ -59,12 +59,12 @@ public:
     bool isPositionInBounds(const Position& pos) const;
 
 private:
-    std::string getPieceToken(const PiecePtr& piece) const;
+    std::string getPieceToken(const Piece* piece) const;
 
     GameState state_;
     std::shared_ptr<IBoard> board_;
     std::shared_ptr<IRuleEngine> ruleEngine_;
-    std::shared_ptr<CollisionSystem> collisionSystem_;
+    std::unique_ptr<CollisionSystem> collisionSystem_;
     MovementSystem movementSystem_;
 
     // משתני ניהול זמן וממשק אינטראקטיבי

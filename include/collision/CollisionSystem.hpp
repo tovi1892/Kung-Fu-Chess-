@@ -13,7 +13,7 @@ class CollisionSystem : public ICollisionSystem {
 public:
     explicit CollisionSystem(BoardPtr board);
 
-    std::optional<PiecePtr> findCollision(const Position& from, const Position& to) const override;
+    std::optional<Piece*> findCollision(const Position& from, const Position& to) const override;
     bool isCapture(const Position& from, const Position& to) const override;
     bool isFriendlyBlock(const Position& from, const Position& to) const override;
     bool isPathClear(const Position& from, const Position& to) const override;

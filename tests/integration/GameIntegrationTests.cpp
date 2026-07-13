@@ -8,8 +8,8 @@
 
 int main() {
     auto board = std::make_shared<kungfu::Board>();
-    auto rook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-    board->placePiece(rook, kungfu::Position(0, 0));
+    auto rook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
+    board->placePiece(std::move(rook), kungfu::Position(0, 0));
 
     std::shared_ptr<kungfu::Game> game;
     auto adapter = std::make_shared<kungfu::UIInputAdapter>(

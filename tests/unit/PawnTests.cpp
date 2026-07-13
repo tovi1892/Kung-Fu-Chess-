@@ -14,8 +14,8 @@ int PawnTests_main() {
     // --- Double-step from start row is allowed ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 0));
-        board->placePiece(pawn, kungfu::Position(1, 0));
+        auto pawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 0));
+        board->placePiece(std::move(pawn), kungfu::Position(1, 0));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -27,8 +27,8 @@ int PawnTests_main() {
     // --- Double-step from non-start row is NOT allowed ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(3, 0));
-        board->placePiece(pawn, kungfu::Position(3, 0));
+        auto pawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(3, 0));
+        board->placePiece(std::move(pawn), kungfu::Position(3, 0));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -39,10 +39,10 @@ int PawnTests_main() {
     // --- Double-step blocked by piece on the intermediate square ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto pawn    = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 0));
-        auto blocker = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::Black, kungfu::Position(2, 0));
-        board->placePiece(pawn, kungfu::Position(1, 0));
-        board->placePiece(blocker, kungfu::Position(2, 0));
+        auto pawn    = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 0));
+        auto blocker = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::Black, kungfu::Position(2, 0));
+        board->placePiece(std::move(pawn), kungfu::Position(1, 0));
+        board->placePiece(std::move(blocker), kungfu::Position(2, 0));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -53,8 +53,8 @@ int PawnTests_main() {
     // --- Black pawn double-step is also allowed ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::Black, kungfu::Position(6, 0));
-        board->placePiece(pawn, kungfu::Position(6, 0));
+        auto pawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::Black, kungfu::Position(6, 0));
+        board->placePiece(std::move(pawn), kungfu::Position(6, 0));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -65,8 +65,8 @@ int PawnTests_main() {
     // --- Promotion: white pawn reaching last row becomes a queen ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(6, 0));
-        board->placePiece(pawn, kungfu::Position(6, 0));
+        auto pawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(6, 0));
+        board->placePiece(std::move(pawn), kungfu::Position(6, 0));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -81,8 +81,8 @@ int PawnTests_main() {
     // --- Promotion: black pawn reaching last row becomes a queen ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::Black, kungfu::Position(1, 0));
-        board->placePiece(pawn, kungfu::Position(1, 0));
+        auto pawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::Black, kungfu::Position(1, 0));
+        board->placePiece(std::move(pawn), kungfu::Position(1, 0));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -97,8 +97,8 @@ int PawnTests_main() {
     // --- No promotion on non-last row ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(3, 0));
-        board->placePiece(pawn, kungfu::Position(3, 0));
+        auto pawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(3, 0));
+        board->placePiece(std::move(pawn), kungfu::Position(3, 0));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -112,8 +112,8 @@ int PawnTests_main() {
     // --- Promoted queen can move diagonally ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(6, 1));
-        board->placePiece(pawn, kungfu::Position(6, 1));
+        auto pawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(6, 1));
+        board->placePiece(std::move(pawn), kungfu::Position(6, 1));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -129,10 +129,10 @@ int PawnTests_main() {
     // --- Game still continues after promotion (no false game-over) ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto pawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(6, 0));
-        auto blackKing = std::make_shared<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(0, 7));
-        board->placePiece(pawn, kungfu::Position(6, 0));
-        board->placePiece(blackKing, kungfu::Position(0, 7));
+        auto pawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(6, 0));
+        auto blackKing = std::make_unique<kungfu::King>(kungfu::PlayerColor::Black, kungfu::Position(0, 7));
+        board->placePiece(std::move(pawn), kungfu::Position(6, 0));
+        board->placePiece(std::move(blackKing), kungfu::Position(0, 7));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -144,10 +144,10 @@ int PawnTests_main() {
     // --- Pawn cannot capture forward ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto whitePawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 0));
-        auto enemyRook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::Black, kungfu::Position(2, 0));
-        board->placePiece(whitePawn, kungfu::Position(1, 0));
-        board->placePiece(enemyRook, kungfu::Position(2, 0));
+        auto whitePawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 0));
+        auto enemyRook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::Black, kungfu::Position(2, 0));
+        board->placePiece(std::move(whitePawn), kungfu::Position(1, 0));
+        board->placePiece(std::move(enemyRook), kungfu::Position(2, 0));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -159,10 +159,10 @@ int PawnTests_main() {
     // --- Pawn can capture diagonally ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto whitePawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 1));
-        auto enemyRook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::Black, kungfu::Position(2, 2));
-        board->placePiece(whitePawn, kungfu::Position(1, 1));
-        board->placePiece(enemyRook, kungfu::Position(2, 2));
+        auto whitePawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 1));
+        auto enemyRook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::Black, kungfu::Position(2, 2));
+        board->placePiece(std::move(whitePawn), kungfu::Position(1, 1));
+        board->placePiece(std::move(enemyRook), kungfu::Position(2, 2));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -175,8 +175,8 @@ int PawnTests_main() {
     // --- Pawn cannot move diagonally to an empty square ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto whitePawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 1));
-        board->placePiece(whitePawn, kungfu::Position(1, 1));
+        auto whitePawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 1));
+        board->placePiece(std::move(whitePawn), kungfu::Position(1, 1));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
@@ -187,10 +187,10 @@ int PawnTests_main() {
     // --- Pawn cannot move diagonally to a friendly piece ---
     {
         auto board = std::make_shared<kungfu::Board>();
-        auto whitePawn = std::make_shared<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 1));
-        auto friendlyRook = std::make_shared<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(2, 2));
-        board->placePiece(whitePawn, kungfu::Position(1, 1));
-        board->placePiece(friendlyRook, kungfu::Position(2, 2));
+        auto whitePawn = std::make_unique<kungfu::Pawn>(kungfu::PlayerColor::White, kungfu::Position(1, 1));
+        auto friendlyRook = std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(2, 2));
+        board->placePiece(std::move(whitePawn), kungfu::Position(1, 1));
+        board->placePiece(std::move(friendlyRook), kungfu::Position(2, 2));
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();

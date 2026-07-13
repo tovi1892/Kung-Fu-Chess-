@@ -1,8 +1,10 @@
 ﻿#include "BoardParser.hpp"
 
 #include <cctype>
+#include <functional>
 #include <iostream>
 #include <sstream>
+#include <unordered_map>
 
 #include "pieces/Bishop.hpp"
 #include "pieces/King.hpp"
@@ -32,7 +34,7 @@ std::vector<std::string> BoardParser::split(const std::string& s) {
     return out;
 }
 
-bool BoardParser::createPieceFromToken(const std::string& token, const Position& pos, PiecePtr& outPiece) {
+bool BoardParser::createPieceFromToken(const std::string& token, const Position& pos, std::unique_ptr<Piece>& outPiece) {
     if (token.size() < 2) {
         return false;
     }
@@ -48,16 +50,21 @@ bool BoardParser::createPieceFromToken(const std::string& token, const Position&
         return false;
     }
 
-    switch (kind) {
-        case 'K': outPiece = std::make_shared<King>(pc, pos); break;
-        case 'Q': outPiece = std::make_shared<Queen>(pc, pos); break;
-        case 'R': outPiece = std::make_shared<Rook>(pc, pos); break;
-        case 'B': outPiece = std::make_shared<Bishop>(pc, pos); break;
-        case 'N': outPiece = std::make_shared<Knight>(pc, pos); break;
-        case 'P': outPiece = std::make_shared<Pawn>(pc, pos); break;
-        default:
-            return false;
+    static const std::unordered_map<std::string, std::function<std::unique_ptr<Piece>(PlayerColor, Position)>> creators = {
+        {"K", [](PlayerColor color, Position position) { return std::make_unique<King>(color, position); }},
+        {"Q", [](PlayerColor color, Position position) { return std::make_unique<Queen>(color, position); }},
+        {"R", [](PlayerColor color, Position position) { return std::make_unique<Rook>(color, position); }},
+        {"B", [](PlayerColor color, Position position) { return std::make_unique<Bishop>(color, position); }},
+        {"N", [](PlayerColor color, Position position) { return std::make_unique<Knight>(color, position); }},
+        {"P", [](PlayerColor color, Position position) { return std::make_unique<Pawn>(color, position); }}
+    };
+
+    auto it = creators.find(std::string(1, kind));
+    if (it == creators.end()) {
+        return false;
     }
+
+    outPiece = it->second(pc, pos);
     return true;
 }
 
@@ -87,13 +94,13 @@ bool BoardParser::parseBoardLines(const std::vector<std::string>& boardLines,
                 continue;
             }
 
-            PiecePtr piece;
+            std::unique_ptr<Piece> piece;
             if (!createPieceFromToken(tok, Position(r, c), piece)) {
                 errorMessage = "ERROR UNKNOWN_TOKEN";
                 return false;
             }
 
-            if (!board->placePiece(piece, Position(r, c))) {
+            if (!board->placePiece(std::move(piece), Position(r, c))) {
                 errorMessage = "ERROR UNKNOWN_TOKEN";
                 return false;
             }

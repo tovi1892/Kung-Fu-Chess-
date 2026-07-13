@@ -9,6 +9,22 @@
 #include "rules/RuleEngine.hpp"
 
 namespace kungfu {
+namespace {
+
+bool captureEnemyAtDestination(IBoard& board, const Position& to, const Piece* movingPiece) {
+    const auto targetPiece = board.pieceAt(to);
+    if (!targetPiece.has_value() || !targetPiece.value()) {
+        return false;
+    }
+
+    if (targetPiece.value()->color() == movingPiece->color()) {
+        return false;
+    }
+
+    return board.removePiece(to);
+}
+
+}  // namespace
 
 Game::Game() : Game(std::make_shared<Board>(), nullptr, nullptr) {}
 
@@ -23,7 +39,7 @@ Game::Game(std::shared_ptr<IBoard> board,
     : state_(GameState::NotStarted),
       board_(std::move(board)),
       ruleEngine_(std::move(ruleEngine)),
-      collisionSystem_(std::make_shared<CollisionSystem>(board_)),
+      collisionSystem_(std::make_unique<CollisionSystem>(board_)),
       inputAdapter_(std::move(inputAdapter)) {
     if (!ruleEngine_) {
         ruleEngine_ = std::make_shared<RuleEngine>(board_);
@@ -72,12 +88,13 @@ bool Game::requestMove(const Position& from, const Position& to) {
         return false;
     }
 
-    const auto movingPiece = board_->pieceAt(from);
-    if (!movingPiece.has_value()) {
+    const auto movingPieceOpt = board_->pieceAt(from);
+    if (!movingPieceOpt.has_value()) {
         return false;
     }
+    Piece* movingPiece = movingPieceOpt.value();
 
-    if (movingPiece.value()->state() == PieceState::Moving) {
+    if (movingPiece->state() == PieceState::Moving) {
         return false;
     }
 
@@ -85,7 +102,7 @@ bool Game::requestMove(const Position& from, const Position& to) {
         return false;
     }
 
-    PieceType type = movingPiece.value()->type();
+    PieceType type = movingPiece->type();
     if (type == PieceType::Queen || type == PieceType::Rook || type == PieceType::Bishop) {
         if (!collisionSystem_->isPathClear(from, to)) {
             return false;
@@ -97,30 +114,34 @@ bool Game::requestMove(const Position& from, const Position& to) {
         return false;
     }
 
-    const auto targetPiece = board_->pieceAt(to);
-    if (targetPiece.has_value() && targetPiece.value()->isAirborne() &&
-        targetPiece.value()->color() == movingPiece.value()->color()) {
+    const auto targetPieceOpt = board_->pieceAt(to);
+    Piece* targetPiece = targetPieceOpt.has_value() ? targetPieceOpt.value() : nullptr;
+
+    if (targetPiece != nullptr && targetPiece->isAirborne() &&
+        targetPiece->color() == movingPiece->color()) {
         return false;
     }
 
-    if (targetPiece.has_value() && targetPiece.value()->isAirborne() &&
-        targetPiece.value()->color() != movingPiece.value()->color()) {
-        movingPiece.value()->setState(PieceState::Captured);
+    if (targetPiece != nullptr && targetPiece->isAirborne() &&
+        targetPiece->color() != movingPiece->color()) {
+        movingPiece->setState(PieceState::Captured);
         board_->removePiece(from);
         selectedPosition_.reset();
         return true;
     }
 
-    const bool capturedKing = collisionSystem_->isCapture(from, to) &&
-                              targetPiece.has_value() &&
-                              targetPiece.value()->type() == PieceType::King;
+    bool capturedKing = false;
+    if (targetPiece != nullptr) {
+        capturedKing = collisionSystem_->isCapture(from, to) &&
+                       targetPiece->type() == PieceType::King;
+    }
 
     int rowDelta = std::abs(to.row() - from.row());
     int colDelta = std::abs(to.col() - from.col());
     int distance = std::max(rowDelta, colDelta);
 
     pendingMove_ = PendingMove{from, to, currentTimeMs_ + (distance * 1000)};
-    movingPiece.value()->setState(PieceState::Moving);
+    movingPiece->setState(PieceState::Moving);
     selectedPosition_.reset();
 
     if (capturedKing) {
@@ -186,7 +207,7 @@ std::shared_ptr<IBoard> Game::getBoard() const {
     return board_;
 }
 
-std::string Game::getPieceToken(const PiecePtr& piece) const {
+std::string Game::getPieceToken(const Piece* piece) const {
     if (!piece) return ".";
     std::string token = (piece->color() == PlayerColor::White) ? "w" : "b";
     switch (piece->type()) {
@@ -225,11 +246,14 @@ void Game::wait(int ms) {
             return;
         }
 
-        const auto targetPiece = board_->pieceAt(to);
-        const bool capturedKing = collisionSystem_->isCapture(from, to) &&
-                                  targetPiece.has_value() &&
-                                  targetPiece.value()->type() == PieceType::King;
+        const auto targetPieceOpt = board_->pieceAt(to);
+        Piece* targetPiece = targetPieceOpt.has_value() ? targetPieceOpt.value() : nullptr;
+        bool capturedKing = false;
+        if (targetPiece != nullptr && targetPiece->color() != movingPiece.value()->color()) {
+            capturedKing = targetPiece->type() == PieceType::King;
+        }
 
+        captureEnemyAtDestination(*board_, to, movingPiece.value());
         board_->movePiece(from, to);
 
         if (capturedKing) {
@@ -241,7 +265,7 @@ void Game::wait(int ms) {
             movedPiece.value()->setState(PieceState::Idle);
             if (movedPiece.value()->type() == PieceType::Pawn &&
                 ruleEngine_->isPawnPromotion(to, movedPiece.value()->color())) {
-                board_->replacePiece(to, std::make_shared<Queen>(movedPiece.value()->color(), to));
+                board_->replacePiece(to, std::make_unique<Queen>(movedPiece.value()->color(), to));
             }
         }
     }
@@ -279,8 +303,13 @@ bool Game::tryMove(const Position& from, const Position& to) {
     }
 
     // A moving piece cannot initiate a second move.
-    const auto sourcePiece = board_->pieceAt(from);
-    if (sourcePiece.has_value() && sourcePiece.value()->state() == PieceState::Moving) {
+    const auto sourcePieceOpt = board_->pieceAt(from);
+    if (sourcePieceOpt.has_value() && sourcePieceOpt.value()->state() == PieceState::Moving) {
+        return false;
+    }
+
+    Piece* sourcePiece = sourcePieceOpt.has_value() ? sourcePieceOpt.value() : nullptr;
+    if (sourcePiece == nullptr) {
         return false;
     }
 
@@ -290,12 +319,10 @@ bool Game::tryMove(const Position& from, const Position& to) {
 
     // --- עדכון עבור כלים מחליקים (מלכה, צריח, רץ) ---
     // ודואים שהנתיב שלהם פנוי מכלים אחרים (פרש ומלך פטורים מבדיקה זו)
-    if (sourcePiece.has_value()) {
-        PieceType type = sourcePiece.value()->type();
-        if (type == PieceType::Queen || type == PieceType::Rook || type == PieceType::Bishop) {
-            if (!collisionSystem_->isPathClear(from, to)) {
-                return false; // הנתיב חסום על ידי כלי אחר
-            }
+    PieceType type = sourcePiece->type();
+    if (type == PieceType::Queen || type == PieceType::Rook || type == PieceType::Bishop) {
+        if (!collisionSystem_->isPathClear(from, to)) {
+            return false; // הנתיב חסום על ידי כלי אחר
         }
     }
 
@@ -308,23 +335,25 @@ bool Game::tryMove(const Position& from, const Position& to) {
     // If the destination holds an airborne friendly piece, it blocks the move.
     const auto targetPiece = board_->pieceAt(to);
     if (targetPiece.has_value() && targetPiece.value()->isAirborne() &&
-        targetPiece.value()->color() == sourcePiece.value()->color()) {
+        targetPiece.value()->color() == sourcePiece->color()) {
         return false;
     }
 
     // If an enemy piece is airborne at the destination, it captures the arriving piece.
     if (targetPiece.has_value() && targetPiece.value()->isAirborne() &&
-        targetPiece.value()->color() != sourcePiece.value()->color()) {
+        targetPiece.value()->color() != sourcePiece->color()) {
         // Airborne captures: remove the arriving piece, airborne stays.
-        sourcePiece.value()->setState(PieceState::Captured);
+        sourcePiece->setState(PieceState::Captured);
         board_->removePiece(from);
         return true;
     }
 
-    // Record whether we are capturing a king before movePiece removes it.
-    const bool capturedKing = collisionSystem_->isCapture(from, to) &&
-                              targetPiece.has_value() &&
-                              targetPiece.value()->type() == PieceType::King;
+    bool capturedKing = false;
+    if (targetPiece.has_value() && targetPiece.value() &&
+        targetPiece.value()->color() != sourcePiece->color()) {
+        capturedKing = targetPiece.value()->type() == PieceType::King;
+        captureEnemyAtDestination(*board_, to, sourcePiece);
+    }
 
     if (!board_->movePiece(from, to)) {
         return false;
@@ -340,7 +369,7 @@ bool Game::tryMove(const Position& from, const Position& to) {
     if (movedPiece.has_value() &&
         movedPiece.value()->type() == PieceType::Pawn &&
         ruleEngine_->isPawnPromotion(to, movedPiece.value()->color())) {
-        board_->replacePiece(to, std::make_shared<Queen>(movedPiece.value()->color(), to));
+        board_->replacePiece(to, std::make_unique<Queen>(movedPiece.value()->color(), to));
     }
 
     return true;

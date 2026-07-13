@@ -16,7 +16,7 @@ public:
 private:
     static std::string trim(const std::string& s);
     static std::vector<std::string> split(const std::string& s);
-    static bool createPieceFromToken(const std::string& token, const Position& pos, PiecePtr& outPiece);
+    static bool createPieceFromToken(const std::string& token, const Position& pos, std::unique_ptr<Piece>& outPiece);
     bool parseBoardLines(const std::vector<std::string>& boardLines,
                          std::shared_ptr<Board>& board,
                          std::string& errorMessage) const;

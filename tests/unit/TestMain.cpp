@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <iostream>
 
 int PositionTests_main();
 int PieceTests_main();
@@ -30,6 +31,7 @@ int main() {
     };
 
     for (int result : results) {
+        std::cout << "suite result=" << result << "\n";
         if (result != EXIT_SUCCESS) {
             return result;
         }

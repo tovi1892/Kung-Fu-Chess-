@@ -8,8 +8,8 @@
 
 int RuleEngineTests_main() {
     auto board = std::make_shared<kungfu::Board>();
-    auto king = std::make_shared<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-    board->placePiece(king, kungfu::Position(0, 0));
+    auto king = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
+    board->placePiece(std::move(king), kungfu::Position(0, 0));
 
     kungfu::RuleEngine engine(board);
 
@@ -28,18 +28,18 @@ int RuleEngineTests_main() {
     assert(emptySourceValidation.reason == "empty_source");
 
     auto friendlyBoard = std::make_shared<kungfu::Board>();
-    auto friendlyKing = std::make_shared<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-    auto friendlyTarget = std::make_shared<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(1, 1));
-    friendlyBoard->placePiece(friendlyKing, kungfu::Position(0, 0));
-    friendlyBoard->placePiece(friendlyTarget, kungfu::Position(1, 1));
+    auto friendlyKing = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
+    auto friendlyTarget = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(1, 1));
+    friendlyBoard->placePiece(std::move(friendlyKing), kungfu::Position(0, 0));
+    friendlyBoard->placePiece(std::move(friendlyTarget), kungfu::Position(1, 1));
     kungfu::RuleEngine friendlyEngine(friendlyBoard);
     const auto friendlyValidation = friendlyEngine.validateMove(kungfu::Position(0, 0), kungfu::Position(1, 1));
     assert(!friendlyValidation.is_valid);
     assert(friendlyValidation.reason == "friendly_destination");
 
     auto illegalBoard = std::make_shared<kungfu::Board>();
-    auto illegalKing = std::make_shared<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
-    illegalBoard->placePiece(illegalKing, kungfu::Position(0, 0));
+    auto illegalKing = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
+    illegalBoard->placePiece(std::move(illegalKing), kungfu::Position(0, 0));
     kungfu::RuleEngine illegalEngine(illegalBoard);
     const auto illegalValidation = illegalEngine.validateMove(kungfu::Position(0, 0), kungfu::Position(2, 2));
     assert(!illegalValidation.is_valid);

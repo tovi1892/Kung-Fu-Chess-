@@ -22,6 +22,7 @@ public:
     bool isAirborne() const;
 
     virtual bool isMovable() const = 0;
+    virtual bool isMoveValid(const Position& from, const Position& to) const = 0;
 
 protected:
     PieceType type_;
