@@ -27,8 +27,10 @@ add_library(kungfu_engine
     src/collision/CollisionSystem.cpp
     src/rules/RuleEngine.cpp
     src/game/Game.cpp
+    src/game/GameController.cpp
     src/game/UIInputAdapter.cpp
     src/BoardParser.cpp
+    src/game/RealTimeArbiter.cpp
 )
 target_include_directories(kungfu_engine PUBLIC include)
 

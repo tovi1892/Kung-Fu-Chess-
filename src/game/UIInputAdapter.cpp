@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "game/GameController.hpp"
+
 namespace kungfu {
 
 namespace {
@@ -47,6 +49,11 @@ void UIInputAdapter::handleClick(int x, int y) {
 
     const auto pos = boardMapper_.mapToBoard(x, y, 8, 8);
     if (!pos.has_value()) {
+        return;
+    }
+
+    if (auto* controller = dynamic_cast<GameController*>(&game)) {
+        controller->handleCellClick(pos->row(), pos->col());
         return;
     }
 

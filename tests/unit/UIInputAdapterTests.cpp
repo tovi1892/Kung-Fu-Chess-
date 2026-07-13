@@ -1,7 +1,10 @@
 #include <catch2/catch.hpp>
 #include <optional>
+#include "game/GameController.hpp"
 #include "game/IGameInputAdapter.hpp"
 #include "game/UIInputAdapter.hpp"
+#include "board/Board.hpp"
+#include "pieces/Rook.hpp"
 
 namespace {
 class MockGame : public kungfu::IGameInputTarget {
@@ -33,4 +36,18 @@ TEST_CASE("UIInputAdapter handles clicks correctly", "[ui]") {
 
     REQUIRE(game.selectCalled == true);
     REQUIRE(game.lastSelectedPos == kungfu::Position(0, 0));
+}
+
+TEST_CASE("GameController owns selection state", "[controller]") {
+    auto board = std::make_shared<kungfu::Board>();
+    board->placePiece(std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(0, 0)), kungfu::Position(0, 0));
+
+    auto game = std::make_shared<kungfu::Game>(board, nullptr, nullptr);
+    game->start();
+
+    kungfu::GameController controller(game);
+
+    REQUIRE(controller.handleCellClick(0, 0) == true);
+    REQUIRE(controller.hasSelection() == true);
+    REQUIRE(controller.selectedPosition() == std::optional<kungfu::Position>(kungfu::Position(0, 0)));
 }

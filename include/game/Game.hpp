@@ -12,21 +12,9 @@
 #include "pieces/Piece.hpp"
 #include "rules/IRuleEngine.hpp"
 #include "game/IGameInputAdapter.hpp"
+#include "game/RealTimeArbiter.hpp" // הכללת ה-Arbiter החדש
 
 namespace kungfu {
-
-// מבנה מעודכן לניהול תנועות מושהות בזמן אמת צעד אחר צעד
-struct PendingMove {
-    Position from;
-    Position to;
-    Position currentPos;
-    int startTimeMs;
-    int arrivalTimeMs;
-    int nextStepTimeMs;
-    int rowStep;
-    int colStep;
-    bool active = true;
-};
 
 class Game : public IGameInputTarget {
 public:
@@ -57,10 +45,10 @@ public:
     bool selectPiece(const Position& pos);
     bool requestMove(const Position& from, const Position& to);
     bool requestJump(const Position& pos);
-    bool hasSelection() const;
-    std::optional<Position> selectedPosition() const;
-    bool isFriendlyPieceAt(const Position& pos) const;
-    bool isPositionInBounds(const Position& pos) const;
+    bool hasSelection() const override;
+    std::optional<Position> selectedPosition() const override;
+    bool isFriendlyPieceAt(const Position& pos) const override;
+    bool isPositionInBounds(const Position& pos) const override;
 
 private:
     std::string getPieceToken(const Piece* piece) const;
@@ -71,9 +59,9 @@ private:
     std::unique_ptr<CollisionSystem> collisionSystem_;
     MovementSystem movementSystem_;
 
-    std::optional<Position> selectedPosition_;
-    std::vector<PendingMove> pendingMoves_; // תמיכה בריבוי תנועות במקביל
-    int currentTimeMs_ = 0;
+    // הפרדת האחריות: ניהול הזמן והתנועות עבר ל-Arbiter
+    std::unique_ptr<RealTimeArbiter> arbiter_; 
+    
     const std::shared_ptr<IGameInputAdapter> inputAdapter_;
 };
 
