@@ -1,4 +1,6 @@
 #include "board/Board.hpp"
+#include "IGameView.hpp"
+#include <cstdint>
 #include <algorithm>
 
 namespace kungfu {
@@ -93,6 +95,24 @@ std::vector<Piece*> Board::pieces() const {
         }
     }
     return result;
+}
+
+std::vector<RenderPiece> Board::getRenderState() const {
+    std::vector<RenderPiece> out;
+    out.reserve(pieces_.size());
+    for (const auto& p : pieces_) {
+        if (!p) continue;
+        RenderPiece rp;
+        rp.id = reinterpret_cast<uintptr_t>(p.get());
+        rp.type = static_cast<int>(p->type());
+        rp.color = static_cast<int>(p->color());
+        rp.x = p->position().row();
+        rp.y = p->position().col();
+        rp.state = static_cast<int>(p->state());
+        rp.cooldownMs = 0.0; // default, real cooldown provided by piece/arbiter if available
+        out.push_back(rp);
+    }
+    return out;
 }
 
 }  // namespace kungfu

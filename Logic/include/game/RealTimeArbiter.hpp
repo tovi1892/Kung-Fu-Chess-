@@ -20,6 +20,8 @@ struct PendingMove {
     int rowStep;
     int colStep;
     bool active = true;
+    // Non-owning identifier for which piece this pending move belongs to
+    uintptr_t pieceId = 0;
 };
 
 class RealTimeArbiter {
@@ -28,6 +30,8 @@ public:
 
     void advanceTime(int ms);
     void addMove(const PendingMove& pm);
+    // Return a snapshot copy of pending moves for external inspection
+    std::vector<PendingMove> snapshotPendingMoves() const;
     
     int currentTimeMs() const { return currentTimeMs_; }
     bool isKingCaptured() const { return kingCaptured_; }

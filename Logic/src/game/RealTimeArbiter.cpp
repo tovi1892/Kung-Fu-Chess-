@@ -141,4 +141,8 @@ void RealTimeArbiter::advanceTime(int ms) {
     }
 }
 
+std::vector<PendingMove> RealTimeArbiter::snapshotPendingMoves() const {
+    return pendingMoves_;
+}
+
 }

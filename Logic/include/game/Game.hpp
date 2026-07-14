@@ -14,6 +14,9 @@
 #include "game/IGameInputAdapter.hpp"
 #include "game/RealTimeArbiter.hpp" // הכללת ה-Arbiter החדש
 
+// Forward-declare render struct from Core_Interfaces to avoid direct header dependency
+namespace kungfu { struct RenderPiece; }
+
 namespace kungfu {
 
 class Game : public IGameInputTarget {
@@ -41,6 +44,9 @@ public:
     bool handleArrivalAtAirbornCell(const Position& cell, const Position& arrivingFrom);
 
     std::shared_ptr<IBoard> getBoard() const;
+
+    // Snapshot of renderable state for the UI (non-owning, lightweight)
+    std::vector<kungfu::RenderPiece> getRenderState() const;
 
     bool selectPiece(const Position& pos);
     bool requestMove(const Position& from, const Position& to);

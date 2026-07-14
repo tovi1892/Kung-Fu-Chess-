@@ -1,75 +1,81 @@
 ﻿cmake_minimum_required(VERSION 3.16)
 project(kung_fu_chess LANGUAGES CXX)
 
-include(FetchContent)
-FetchContent_Declare(
-  Catch2
-  GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-  GIT_TAG v2.13.9
-)
-FetchContent_MakeAvailable(Catch2)
-
+# הגדרת סטנדרט C++
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_library(kungfu_engine
-    src/common/Position.cpp
-    src/pieces/Piece.cpp
-    src/pieces/King.cpp
-    src/pieces/Queen.cpp
-    src/pieces/Rook.cpp
-    src/pieces/Bishop.cpp
-    src/pieces/Knight.cpp
-    src/pieces/Pawn.cpp
-    src/board/Board.cpp
-    src/movement/MovementSystem.cpp
-    src/collision/CollisionSystem.cpp
-    src/rules/RuleEngine.cpp
-    src/game/Game.cpp
-    src/game/GameController.cpp
-    src/game/UIInputAdapter.cpp
-    src/BoardParser.cpp
-    src/game/RealTimeArbiter.cpp
-)
-target_include_directories(kungfu_engine PUBLIC include)
+# Choose whether to build tests
+option(BUILD_TESTS "Build unit and integration tests" ON)
 
-add_executable(kungfu_app
-    main.cpp
+
+# --- Dependencies ---------------------------------------------------------
+# Fetch Catch2 only when building tests
+include(FetchContent)
+if(BUILD_TESTS)
+    FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v2.13.9
+    )
+    FetchContent_MakeAvailable(Catch2)
+endif()
+
+# Prefer that users set OpenCV_DIR externally (e.g. via CMake cache or env).
+# If OpenCV is installed and discoverable, this will succeed on Windows/MSVC.
+find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
+if(NOT OpenCV_FOUND)
+    message(FATAL_ERROR "OpenCV not found. Set OpenCV_DIR to your OpenCV build (e.g. C:/opencv/build) and re-run CMake.")
+endif()
+
+# יצירת הספרייה הראשית (ה-Engine)
+
+# Collect engine sources. Using GLOB_RECURSE keeps the CMakeLists concise
+# while still including all .cpp files under the expected source dirs.
+file(GLOB_RECURSE ENGINE_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/Logic/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/UI/Img/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/UI/UI_OpenCV/*.cpp"
 )
+
+add_library(kungfu_engine STATIC ${ENGINE_SOURCES})
+
+
+# Include directories needed to resolve headers like "board/Board.hpp"
+target_include_directories(kungfu_engine PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/Logic/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/Core_Interfaces
+        ${CMAKE_CURRENT_SOURCE_DIR}/UI
+)
+
+# Link OpenCV (prefer imported targets if available)
+if(TARGET OpenCV::opencv_core)
+    target_link_libraries(kungfu_engine PUBLIC OpenCV::opencv_core OpenCV::imgproc OpenCV::highgui)
+else()
+    target_include_directories(kungfu_engine PUBLIC ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(kungfu_engine PUBLIC ${OpenCV_LIBS})
+endif()
+
+# בניית ה-App הראשי
+# Application
+add_executable(kungfu_app main.cpp)
 target_link_libraries(kungfu_app PRIVATE kungfu_engine)
-target_include_directories(kungfu_app PRIVATE include)
 
-add_executable(kungfu_integration_tests
-    tests/integration/GameIntegrationTests.cpp
-)
-target_link_libraries(kungfu_integration_tests PRIVATE kungfu_engine)
-target_include_directories(kungfu_integration_tests PRIVATE include)
+# הגדרת טסטים (Integration)
+# Integration tests
+if(BUILD_TESTS)
+    add_executable(kungfu_integration_tests Logic/tests/integration/GameIntegrationTests.cpp)
+    target_link_libraries(kungfu_integration_tests PRIVATE kungfu_engine Catch2::Catch2)
+endif()
 
-add_test(NAME integration_tests COMMAND kungfu_integration_tests)
+# הגדרת טסטים (Unit)
+if(BUILD_TESTS)
+    file(GLOB_RECURSE UNIT_TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Logic/tests/unit/*.cpp")
+    add_executable(kungfu_tests ${UNIT_TEST_SOURCES})
+    target_link_libraries(kungfu_tests PRIVATE kungfu_engine Catch2::Catch2)
 
-# הגדרת הטסטים של Catch2
-add_executable(kungfu_tests
-    tests/unit/TestMain.cpp
-    tests/unit/PositionTests.cpp
-    tests/unit/PieceTests.cpp
-    tests/unit/BoardTests.cpp
-    tests/unit/RuleEngineTests.cpp
-    tests/unit/PieceTypesTests.cpp
-    tests/unit/MovementSystemTests.cpp
-    tests/unit/CollisionSystemTests.cpp
-    tests/unit/GameTests.cpp
-    tests/unit/PawnTests.cpp
-    tests/unit/JumpTests.cpp
-    tests/unit/ConfigAndBoundaryTests.cpp
-    tests/unit/UIInputAdapterTests.cpp
-    tests/unit/GameRealTimeTests.cpp
-    tests/unit/GameCollisionTests.cpp
-)
-
-# הקישור חייב לבוא אחרי ה-add_executable
-target_link_libraries(kungfu_tests PRIVATE kungfu_engine Catch2::Catch2)
-target_include_directories(kungfu_tests PRIVATE include)
-
-enable_testing()
-add_test(NAME unit_tests COMMAND kungfu_tests)
+    enable_testing()
+    add_test(NAME unit_tests COMMAND kungfu_tests)
+    add_test(NAME integration_tests COMMAND kungfu_integration_tests)
+endif()

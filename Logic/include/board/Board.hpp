@@ -1,12 +1,14 @@
 #pragma once
 
 #include <memory>
-#include <memory>
 #include <vector>
 #include "board/IBoard.hpp"
 #include "common/Enums.hpp"
 #include "common/Position.hpp"
 #include "pieces/Piece.hpp"
+
+// Forward-declare render struct from Core_Interfaces to avoid direct header dependency
+namespace kungfu { struct RenderPiece; }
 
 namespace kungfu {
 
@@ -26,6 +28,9 @@ public:
 
 
     std::vector<Piece*> pieces() const;
+
+    // Provide a lightweight render snapshot for UI. Non-owning pointers/ids returned.
+    std::vector<kungfu::RenderPiece> getRenderState() const;
 
 private:
     std::vector<std::unique_ptr<Piece>> pieces_;
