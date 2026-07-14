@@ -64,6 +64,7 @@ add_executable(kungfu_tests
     tests/unit/ConfigAndBoundaryTests.cpp
     tests/unit/UIInputAdapterTests.cpp
     tests/unit/GameRealTimeTests.cpp
+    tests/unit/GameCollisionTests.cpp
 )
 
 # הקישור חייב לבוא אחרי ה-add_executable
