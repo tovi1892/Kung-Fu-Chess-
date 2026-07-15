@@ -135,4 +135,34 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         REQUIRE(result.is_accepted == false);
         REQUIRE(result.reason == "friendly_destination");
     }
+
+    SECTION("Capturing a static enemy mid-slide stops the move there, like standard chess") {
+        auto board = std::make_shared<Board>();
+        GameEngine game(board);
+        game.start();
+
+        for (int r = 0; r < 8; ++r) {
+            for (int c = 0; c < 8; ++c) {
+                board->removePiece(Position(r, c));
+            }
+        }
+
+        board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
+        board->placePiece(std::make_unique<Pawn>(PlayerColor::Black, Position(0, 3)), Position(0, 3));
+        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
+        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
+
+        // Requesting a move past the enemy pawn is now legal to *request*...
+        const auto result = game.requestMove(Position(0, 0), Position(0, 6));
+        REQUIRE(result.is_accepted);
+        game.wait(6000);  // more than enough time to have reached (0,6) had it not stopped
+
+        // ...but capturing the pawn along the way ends the move right there.
+        auto stoppedAt = board->pieceAt(Position(0, 3));
+        REQUIRE(stoppedAt.has_value());
+        CHECK((*stoppedAt)->type() == PieceType::Rook);
+        CHECK((*stoppedAt)->color() == PlayerColor::White);
+
+        REQUIRE(board->pieceAt(Position(0, 6)).has_value() == false);
+    }
 }

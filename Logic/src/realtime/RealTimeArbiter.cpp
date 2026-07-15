@@ -1,13 +1,21 @@
 #include "realtime/RealTimeArbiter.hpp"
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 #include "model/GameConfig.hpp"
 #include "model/pieces/Queen.hpp"
 
 namespace kungfu {
 
-RealTimeArbiter::RealTimeArbiter(std::shared_ptr<IBoard> board)
-    : board_(std::move(board)), currentTimeMs_(0), kingCaptured_(false) {}
+RealTimeArbiter::RealTimeArbiter(std::shared_ptr<IBoard> board,
+                                  std::shared_ptr<IRuleEngine> ruleEngine,
+                                  double speedMultiplier)
+    : board_(std::move(board)),
+      ruleEngine_(std::move(ruleEngine)),
+      msPerCell_(static_cast<int>(GameConfig::kMsPerCell / speedMultiplier)),
+      cooldownMs_(static_cast<int>(GameConfig::kBaseCooldownMs / speedMultiplier)),
+      currentTimeMs_(0),
+      kingCaptured_(false) {}
 
 void RealTimeArbiter::promoteIfNeeded(const Position& pos) {
     const auto pieceOpt = board_->pieceAt(pos);
@@ -24,8 +32,80 @@ void RealTimeArbiter::promoteIfNeeded(const Position& pos) {
     }
 }
 
-void RealTimeArbiter::addMove(const PendingMove& pm) {
+void RealTimeArbiter::beginCooldown(Piece* piece) {
+    if (!piece) return;
+    piece->setState(PieceState::Cooldown);
+    cooldowns_.push_back({static_cast<uintptr_t>(piece->id()), currentTimeMs_ + cooldownMs_});
+}
+
+void RealTimeArbiter::startMove(const Position& from, const Position& to, uintptr_t pieceId) {
+    const int rowDelta = to.row() - from.row();
+    const int colDelta = to.col() - from.col();
+    const int distance = std::max(std::abs(rowDelta), std::abs(colDelta));
+    const int rStep = (rowDelta == 0) ? 0 : (rowDelta > 0 ? 1 : -1);
+    const int cStep = (colDelta == 0) ? 0 : (colDelta > 0 ? 1 : -1);
+
+    const int startTime = currentTimeMs_;
+    PendingMove pm{
+        from,
+        to,
+        from,
+        startTime,
+        startTime + (distance * msPerCell_),
+        startTime + msPerCell_,
+        rStep,
+        cStep,
+        true
+    };
+    pm.pieceId = pieceId;
     pendingMoves_.push_back(pm);
+}
+
+void RealTimeArbiter::setPremove(uintptr_t pieceId, const Position& to) {
+    premoves_[pieceId] = to;
+}
+
+void RealTimeArbiter::resolveCooldownExpirations() {
+    for (auto it = cooldowns_.begin(); it != cooldowns_.end();) {
+        if (it->endTimeMs != currentTimeMs_) {
+            ++it;
+            continue;
+        }
+
+        const uintptr_t pieceId = it->pieceId;
+        it = cooldowns_.erase(it);
+
+        Piece* piece = nullptr;
+        for (Piece* candidate : board_->pieces()) {
+            if (candidate && static_cast<uintptr_t>(candidate->id()) == pieceId) {
+                piece = candidate;
+                break;
+            }
+        }
+        if (!piece || piece->state() != PieceState::Cooldown) {
+            continue;
+        }
+        piece->setState(PieceState::Idle);
+
+        auto premoveIt = premoves_.find(pieceId);
+        if (premoveIt == premoves_.end()) {
+            continue;
+        }
+        const Position to = premoveIt->second;
+        premoves_.erase(premoveIt);
+
+        if (!ruleEngine_) {
+            continue;
+        }
+        const auto validation = ruleEngine_->validateMove(piece->position(), to);
+        if (!validation.is_valid) {
+            continue;  // invalid premove just fizzles - this is also how a
+                       // deliberately-illegal request cancels a real one.
+        }
+
+        piece->setState(PieceState::Moving);
+        startMove(piece->position(), to, pieceId);
+    }
 }
 
 void RealTimeArbiter::advanceTime(int ms) {
@@ -66,22 +146,23 @@ void RealTimeArbiter::advanceTime(int ms) {
                     board_->removePiece(pm.to);
                     board_->movePiece(pm.currentPos, pm.to);
                     pm.currentPos = pm.to;
-                    currentPiece->setState(PieceState::Idle);
                     if (capturedKing) {
                         kingCaptured_ = true;
                         return;
                     }
+                    beginCooldown(currentPiece);
                     continue;
                 }
 
                 board_->movePiece(pm.currentPos, pm.to);
                 pm.currentPos = pm.to;
-                currentPiece->setState(PieceState::Idle);
+                beginCooldown(currentPiece);
                 continue;
             }
 
             if (currentTimeMs_ == pm.nextStepTimeMs || currentTimeMs_ == pm.arrivalTimeMs) {
                 Position nextPos(pm.currentPos.row() + pm.rowStep, pm.currentPos.col() + pm.colStep);
+                bool capturedThisStep = false;
 
                 auto targetPieceOpt = board_->pieceAt(nextPos);
                 if (targetPieceOpt.has_value() && targetPieceOpt.value() != nullptr) {
@@ -113,6 +194,7 @@ void RealTimeArbiter::advanceTime(int ms) {
 
                                 board_->movePiece(pm.currentPos, nextPos);
                                 pm.currentPos = nextPos;
+                                capturedThisStep = true;
                             } else {
                                 // otherPm מנצח ומחסל את pm
                                 currentPiece->setState(PieceState::Captured);
@@ -129,7 +211,7 @@ void RealTimeArbiter::advanceTime(int ms) {
                             pm.active = false;
                             continue;
                         } else {
-                            // הכאה רגילה של אויב סטטי
+                            // הכאה של אויב סטטי - עוצרת את הגלישה כאן, בדיוק כמו בשחמט רגיל
                             bool capturedKing = (target->type() == PieceType::King);
 
                             // עצירת תנועות אחרות שרצו אל אותה משבצת היעד שנתפסה כעת
@@ -142,6 +224,7 @@ void RealTimeArbiter::advanceTime(int ms) {
                             board_->removePiece(nextPos);
                             board_->movePiece(pm.currentPos, nextPos);
                             pm.currentPos = nextPos;
+                            capturedThisStep = true;
 
                             if (capturedKing) {
                                 kingCaptured_ = true;
@@ -156,15 +239,16 @@ void RealTimeArbiter::advanceTime(int ms) {
                     pm.currentPos = nextPos;
                 }
 
-                // בדיקה האם הגענו ליעד הסופי של התנועה
-                if (pm.currentPos == pm.to || currentTimeMs_ >= pm.arrivalTimeMs) {
+                // אכילה עוצרת את המהלך כאן, גם אם זו לא המשבצת המבוקשת המקורית.
+                // אחרת - נבדוק אם הגענו ליעד הסופי של התנועה.
+                if (capturedThisStep || pm.currentPos == pm.to || currentTimeMs_ >= pm.arrivalTimeMs) {
                     pm.active = false;
-                    if (auto movedPiece = board_->pieceAt(pm.to); movedPiece.has_value()) {
-                        movedPiece.value()->setState(PieceState::Idle);
+                    if (auto arrivedPiece = board_->pieceAt(pm.currentPos); arrivedPiece.has_value()) {
+                        beginCooldown(arrivedPiece.value());
                     }
-                    promoteIfNeeded(pm.to);
+                    promoteIfNeeded(pm.currentPos);
                 } else {
-                    pm.nextStepTimeMs += GameConfig::kMsPerCell;
+                    pm.nextStepTimeMs += msPerCell_;
                 }
             }
         }
@@ -174,6 +258,8 @@ void RealTimeArbiter::advanceTime(int ms) {
                            [](const PendingMove& pm) { return !pm.active; }),
             pendingMoves_.end());
 
+        resolveCooldownExpirations();
+
         if (kingCaptured_) return;
     }
 }
@@ -182,4 +268,4 @@ std::vector<PendingMove> RealTimeArbiter::snapshotPendingMoves() const {
     return pendingMoves_;
 }
 
-}
+}  // namespace kungfu

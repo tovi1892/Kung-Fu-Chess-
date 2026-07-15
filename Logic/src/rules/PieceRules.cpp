@@ -14,10 +14,14 @@ bool isInBounds(const IBoard& board, const Position& pos) {
            pos.col() >= 0 && pos.col() < board.cols();
 }
 
-// Walks outward from 'piece' one direction at a time, adding every empty
-// square and stopping at the first occupied square (adding it only if it's
-// an enemy piece, i.e. a capture). This is the single implementation of
-// "sliding pieces do not pass through blocking pieces" (section 9).
+// Walks outward from 'piece' one direction at a time, all the way to the edge
+// of the board. Squares occupied by a friendly piece are never legal targets
+// (never legal to capture your own piece), but - unlike standard chess -
+// anything beyond a blocker (friendly or enemy) is still a legal *request*:
+// this team's real-time rules allow requesting a move "through" pieces, since
+// whatever is in the way might move out of it before this piece actually gets
+// there. Whether the move actually reaches that far, or stops/captures short,
+// is resolved dynamically during the motion by RealTimeArbiter - not here.
 void collectSlidingDestinations(const IBoard& board,
                                  const Piece& piece,
                                  const std::vector<std::pair<int, int>>& directions,
@@ -27,13 +31,11 @@ void collectSlidingDestinations(const IBoard& board,
         Position candidate(from.row() + dr, from.col() + dc);
         while (isInBounds(board, candidate)) {
             const auto occupant = board.pieceAt(candidate);
-            if (occupant.has_value() && occupant.value() != nullptr) {
-                if (occupant.value()->color() != piece.color()) {
-                    out.insert(candidate);
-                }
-                break;
+            const bool isFriendly = occupant.has_value() && occupant.value() != nullptr &&
+                                     occupant.value()->color() == piece.color();
+            if (!isFriendly) {
+                out.insert(candidate);
             }
-            out.insert(candidate);
             candidate = Position(candidate.row() + dr, candidate.col() + dc);
         }
     }

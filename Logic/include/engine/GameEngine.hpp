@@ -34,7 +34,10 @@ class GameEngine {
 public:
     GameEngine();
     explicit GameEngine(std::shared_ptr<IBoard> board);
-    GameEngine(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngine> ruleEngine);
+    // speedMultiplier scales both movement speed and post-move cooldown in
+    // RealTimeArbiter (>1.0 = faster game). Defaults to 1.0.
+    GameEngine(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngine> ruleEngine,
+               double speedMultiplier = 1.0);
 
     void start();
     void stop();

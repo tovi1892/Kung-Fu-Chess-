@@ -11,6 +11,10 @@ struct GameConfig {
     static constexpr int kPieceSpeedPxPerSec = 100;
     static constexpr int kMsPerCell = 1000 * kCellSizePx / kPieceSpeedPxPerSec;
 
+    // Base cooldown after a piece finishes a move, before it is selectable
+    // again. Scales with RealTimeArbiter's speedMultiplier, same as kMsPerCell.
+    static constexpr int kBaseCooldownMs = 1000;
+
     // Pawn start rows (the row a pawn sits on at game start).
     static constexpr int kWhitePawnStartRow = 1;
     static constexpr int kBlackPawnStartRow = 6;

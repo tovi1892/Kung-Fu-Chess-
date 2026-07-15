@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <optional>
+#include <vector>
 #include "model/Position.hpp"
 #include "model/pieces/Piece.hpp"
 
@@ -21,6 +22,9 @@ public:
 
     // Replaces the piece at 'position' with 'newPiece' (used for pawn promotion).
     virtual bool replacePiece(const Position& position, std::unique_ptr<Piece> newPiece) = 0;
+
+    // Non-owning list of every piece currently on the board.
+    virtual std::vector<Piece*> pieces() const = 0;
 };
 
 using BoardPtr = std::shared_ptr<IBoard>;

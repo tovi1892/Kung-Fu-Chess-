@@ -24,7 +24,7 @@ TEST_CASE("RookRules: slides across empty row and column", "[piece_rules][rook]"
     REQUIRE(dest.count(Position(4, 4)) == 0);  // not straight
 }
 
-TEST_CASE("RookRules: stops before a friendly blocker", "[piece_rules][rook]") {
+TEST_CASE("RookRules: a friendly-occupied square is never a legal target", "[piece_rules][rook]") {
     Board board;
     auto* rook = new Rook(PlayerColor::White, Position(3, 3));
     board.placePiece(std::unique_ptr<Piece>(rook), Position(3, 3));
@@ -33,19 +33,28 @@ TEST_CASE("RookRules: stops before a friendly blocker", "[piece_rules][rook]") {
     auto dest = RookRules{}.legalDestinations(board, *rook);
     REQUIRE(dest.count(Position(3, 4)) == 1);
     REQUIRE(dest.count(Position(3, 5)) == 0);  // friendly: excluded
-    REQUIRE(dest.count(Position(3, 6)) == 0);  // beyond the blocker
 }
 
-TEST_CASE("RookRules: captures an enemy blocker but does not pass it", "[piece_rules][rook]") {
+TEST_CASE("RookRules: a request may target a square beyond a blocker", "[piece_rules][rook]") {
+    // This team's real-time rules allow *requesting* a move through a
+    // currently-occupied square (friendly or enemy) - the blocker might move
+    // out of the way before this piece actually gets there. Whether the move
+    // really reaches that far is resolved dynamically by RealTimeArbiter, not
+    // by legality here.
     Board board;
     auto* rook = new Rook(PlayerColor::White, Position(3, 3));
     board.placePiece(std::unique_ptr<Piece>(rook), Position(3, 3));
+    board.placePiece(std::make_unique<Rook>(PlayerColor::White, Position(3, 5)), Position(3, 5));
+
+    auto destBeyondFriendly = RookRules{}.legalDestinations(board, *rook);
+    REQUIRE(destBeyondFriendly.count(Position(3, 6)) == 1);  // beyond the friendly blocker
+
+    board.removePiece(Position(3, 5));
     board.placePiece(std::make_unique<Rook>(PlayerColor::Black, Position(3, 5)), Position(3, 5));
 
-    auto dest = RookRules{}.legalDestinations(board, *rook);
-    REQUIRE(dest.count(Position(3, 4)) == 1);
-    REQUIRE(dest.count(Position(3, 5)) == 1);  // enemy: capturable
-    REQUIRE(dest.count(Position(3, 6)) == 0);  // beyond the captured piece
+    auto destBeyondEnemy = RookRules{}.legalDestinations(board, *rook);
+    REQUIRE(destBeyondEnemy.count(Position(3, 5)) == 1);  // the enemy square itself: capturable
+    REQUIRE(destBeyondEnemy.count(Position(3, 6)) == 1);  // and beyond it
 }
 
 TEST_CASE("BishopRules: moves diagonally and not straight", "[piece_rules][bishop]") {

@@ -19,24 +19,20 @@ GameEngine::GameEngine() : GameEngine(std::make_shared<Board>(), nullptr) {}
 
 GameEngine::GameEngine(std::shared_ptr<IBoard> board) : GameEngine(std::move(board), nullptr) {}
 
-GameEngine::GameEngine(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngine> ruleEngine)
+GameEngine::GameEngine(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngine> ruleEngine,
+                        double speedMultiplier)
     : state_(GameState::NotStarted),
       board_(std::move(board)),
-      ruleEngine_(std::move(ruleEngine)),
-      arbiter_(std::make_unique<RealTimeArbiter>(board_)) {
+      ruleEngine_(std::move(ruleEngine)) {
     if (!ruleEngine_) {
         ruleEngine_ = std::make_shared<RuleEngine>(board_);
     }
+    arbiter_ = std::make_unique<RealTimeArbiter>(board_, ruleEngine_, speedMultiplier);
 }
 
 MoveResult GameEngine::requestMove(const Position& from, const Position& to) {
     if (state_ != GameState::Running) {
         return {false, "game_over"};
-    }
-
-    const auto validation = ruleEngine_->validateMove(from, to);
-    if (!validation.is_valid) {
-        return {false, validation.reason};
     }
 
     const auto movingPieceOpt = board_->pieceAt(from);
@@ -49,28 +45,20 @@ MoveResult GameEngine::requestMove(const Position& from, const Position& to) {
         return {false, "piece_already_moving"};
     }
 
-    int rowDelta = to.row() - from.row();
-    int colDelta = to.col() - from.col();
-    int distance = std::max(std::abs(rowDelta), std::abs(colDelta));
-    int rStep = (rowDelta == 0) ? 0 : (rowDelta > 0 ? 1 : -1);
-    int cStep = (colDelta == 0) ? 0 : (colDelta > 0 ? 1 : -1);
+    if (movingPiece->state() == PieceState::Cooldown) {
+        // Queued unvalidated: this is also how submitting a deliberately
+        // illegal request cancels a previously queued premove (it overwrites
+        // the same slot, and will itself fail validation when cooldown ends).
+        arbiter_->setPremove(static_cast<uintptr_t>(movingPiece->id()), to);
+        return {true, "premove_queued"};
+    }
 
-    int startTime = arbiter_->currentTimeMs();
-    PendingMove pm{
-        from,
-        to,
-        from,
-        startTime,
-        startTime + (distance * GameConfig::kMsPerCell),
-        startTime + GameConfig::kMsPerCell,
-        rStep,
-        cStep,
-        true
-    };
-    // attach piece id so Arbiter and UI can correlate pending moves to pieces
-    pm.pieceId = static_cast<uintptr_t>(movingPiece->id());
+    const auto validation = ruleEngine_->validateMove(from, to);
+    if (!validation.is_valid) {
+        return {false, validation.reason};
+    }
 
-    arbiter_->addMove(pm);
+    arbiter_->startMove(from, to, static_cast<uintptr_t>(movingPiece->id()));
     movingPiece->setState(PieceState::Moving);
 
     return {true, "ok"};

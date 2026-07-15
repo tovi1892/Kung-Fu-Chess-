@@ -17,10 +17,11 @@ enum class PlayerColor {
 };
 
 enum class PieceState {
-    Idle,       
-    Moving,     
-    Airborne,   
-    Captured    
+    Idle,
+    Moving,
+    Cooldown,   // arrived from a move; not selectable again until the cooldown elapses
+    Airborne,
+    Captured
 };
 
 }  // namespace kungfu

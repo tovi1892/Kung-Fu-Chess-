@@ -27,7 +27,7 @@ public:
     bool replacePiece(const Position& position, std::unique_ptr<Piece> newPiece) override;
 
 
-    std::vector<Piece*> pieces() const;
+    std::vector<Piece*> pieces() const override;
 
     // Provide a lightweight render snapshot for UI. Non-owning pointers/ids returned.
     std::vector<kungfu::RenderPiece> getRenderState() const;
