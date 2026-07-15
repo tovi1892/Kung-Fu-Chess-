@@ -1,7 +1,7 @@
 #include <catch2/catch.hpp>
 #include <memory>
 #include <vector>
-#include "game/Game.hpp"
+#include "engine/GameEngine.hpp"
 #include "model/Board.hpp"
 #include "model/Position.hpp"
 #include "model/pieces/Rook.hpp"
@@ -18,7 +18,7 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
 
     SECTION("Rule 5: Dynamic Enemy Collision") {
         auto board = std::make_shared<Board>();
-        Game game(board);
+        GameEngine game(board);
         game.start();
 
         // ניקוי הלוח
@@ -34,9 +34,9 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
         board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
-        REQUIRE(game.requestMove(Position(0, 0), Position(0, 4)));
+        REQUIRE(game.requestMove(Position(0, 0), Position(0, 4)).is_accepted);
         game.wait(500);
-        REQUIRE(game.requestMove(Position(0, 4), Position(0, 0)));
+        REQUIRE(game.requestMove(Position(0, 4), Position(0, 0)).is_accepted);
         game.wait(2000);
 
         auto pieceAt = board->pieceAt(Position(0, 2));
@@ -45,8 +45,12 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
     }
 
     SECTION("Rule 6: Dynamic Friendly Collision") {
+        // Both rooks start on empty squares and race toward each other along
+        // row 0, so the "friendly collision" only becomes real mid-flight
+        // (via RealTimeArbiter's dynamic-collision check) rather than being
+        // rejected upfront by RuleEngine's friendly_destination guard.
         auto board = std::make_shared<Board>();
-        Game game(board);
+        GameEngine game(board);
         game.start();
 
         for (int r = 0; r < 8; ++r) {
@@ -56,23 +60,30 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         }
 
         board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
-        board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 4)), Position(0, 4));
+        board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 6)), Position(0, 6));
         board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
         board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
-        REQUIRE(game.requestMove(Position(0, 0), Position(0, 4)));
-        game.wait(500);
-        REQUIRE(game.requestMove(Position(0, 4), Position(0, 0)));
-        game.wait(2000);
+        REQUIRE(game.requestMove(Position(0, 0), Position(0, 5)).is_accepted);
+        REQUIRE(game.requestMove(Position(0, 6), Position(0, 1)).is_accepted);
+        game.wait(5000);
 
-        auto pos = board->pieceAt(Position(0, 3));
-        REQUIRE(pos.has_value());
-        CHECK((*pos)->state() == PieceState::Idle);
+        // The rook moving right (processed first each tick) claims (0,3) at
+        // the collision instant, so the rook moving left stops one square
+        // short, at (0,4). The winning rook then immediately runs into that
+        // now-stationary friendly piece and also stops, at (0,3).
+        auto winner = board->pieceAt(Position(0, 3));
+        REQUIRE(winner.has_value());
+        CHECK((*winner)->state() == PieceState::Idle);
+
+        auto stopped = board->pieceAt(Position(0, 4));
+        REQUIRE(stopped.has_value());
+        CHECK((*stopped)->state() == PieceState::Idle);
     }
 
     SECTION("Rule 8: Knight Landing") {
         auto board = std::make_shared<Board>();
-        Game game(board);
+        GameEngine game(board);
         game.start();
 
         for (int r = 0; r < 8; ++r) {
@@ -86,7 +97,7 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
         board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
-        REQUIRE(game.requestMove(Position(0, 0), Position(2, 1)));
+        REQUIRE(game.requestMove(Position(0, 0), Position(2, 1)).is_accepted);
         game.wait(2500);
 
         auto dest = board->pieceAt(Position(2, 1));

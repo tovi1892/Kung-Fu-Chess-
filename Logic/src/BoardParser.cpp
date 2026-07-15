@@ -12,7 +12,9 @@
 #include "model/pieces/Pawn.hpp"
 #include "model/pieces/Queen.hpp"
 #include "model/pieces/Rook.hpp"
-#include "game/Game.hpp"
+#include "model/GameConfig.hpp"
+#include "engine/GameEngine.hpp"
+#include "game/GameController.hpp"
 #include "game/UIInputAdapter.hpp"
 
 namespace kungfu {
@@ -110,7 +112,8 @@ bool BoardParser::parseBoardLines(const std::vector<std::string>& boardLines,
     return true;
 }
 
-void BoardParser::executeCommands(const std::shared_ptr<Game>& game,
+void BoardParser::executeCommands(const std::shared_ptr<GameEngine>& game,
+                                  const std::shared_ptr<UIInputAdapter>& adapter,
                                   const std::vector<std::string>& commands) const {
     for (const auto& rawLine : commands) {
         auto line = trim(rawLine);
@@ -137,7 +140,7 @@ void BoardParser::executeCommands(const std::shared_ptr<Game>& game,
             if (parts.size() >= 3) {
                 int x = std::stoi(parts[1]);
                 int y = std::stoi(parts[2]);
-                game->click(x, y);
+                adapter->handleClick(x, y);
             }
             continue;
         }
@@ -146,9 +149,9 @@ void BoardParser::executeCommands(const std::shared_ptr<Game>& game,
             if (parts.size() >= 3) {
                 int r = std::stoi(parts[1]);
                 int c = std::stoi(parts[2]);
-                int x = c * 100 + 50;
-                int y = r * 100 + 50;
-                game->click(x, y);
+                int x = c * GameConfig::kCellSizePx + GameConfig::kCellSizePx / 2;
+                int y = r * GameConfig::kCellSizePx + GameConfig::kCellSizePx / 2;
+                adapter->handleClick(x, y);
             }
             continue;
         }
@@ -168,17 +171,6 @@ void BoardParser::executeCommands(const std::shared_ptr<Game>& game,
 
         if (cmd == "STOP") {
             game->stop();
-            continue;
-        }
-
-        if (cmd == "MOVE" || cmd == "TRYMOVE") {
-            if (parts.size() >= 5) {
-                int r1 = std::stoi(parts[1]);
-                int c1 = std::stoi(parts[2]);
-                int r2 = std::stoi(parts[3]);
-                int c2 = std::stoi(parts[4]);
-                game->tryMove(Position(r1, c1), Position(r2, c2));
-            }
             continue;
         }
     }
@@ -219,18 +211,18 @@ bool BoardParser::parseInput(std::istream& in, std::shared_ptr<Board>& board) co
         }
     }
 
-    auto gameHolder = std::make_shared<std::shared_ptr<Game>>();
-    auto adapter = std::make_shared<UIInputAdapter>([gameHolder]() -> IGameInputTarget& { return **gameHolder; });
-    auto game = std::make_shared<Game>(board, nullptr, adapter);
-    *gameHolder = game;
+    auto game = std::make_shared<GameEngine>(board, nullptr);
     game->start();
+    auto controller = std::make_shared<GameController>(game);
+    auto adapter = std::make_shared<UIInputAdapter>(
+        [controller]() -> IGameInputTarget& { return *controller; });
 
     std::vector<std::string> commands;
     while (i < lines.size()) {
         commands.push_back(lines[i]);
         ++i;
     }
-    executeCommands(game, commands);
+    executeCommands(game, adapter, commands);
     return true;
 }
 

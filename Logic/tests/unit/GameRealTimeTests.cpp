@@ -1,38 +1,27 @@
-#include <catch2/catch.hpp> 
+#include <catch2/catch.hpp>
 #include <memory>
 #include <optional>
 
 // כולל את כל המחלקות הדרושות
-#include "game/Game.hpp"
+#include "engine/GameEngine.hpp"
 #include "model/Board.hpp"
 #include "rules/RuleEngine.hpp"
-#include "game/IGameInputAdapter.hpp"
 #include "model/pieces/Pawn.hpp"
 #include "model/pieces/Knight.hpp"
 #include "model/pieces/Rook.hpp"
 #include "model/pieces/Queen.hpp"
-
-namespace kungfu {
-    class DummyInputAdapter : public IGameInputAdapter {
-    public:
-        void handleClick(int x, int y) override {}
-        std::optional<InputCommand> nextCommand() override { return std::nullopt; }
-    };
-}
 
 using namespace kungfu;
 
 struct TestContext {
     std::shared_ptr<Board> board;
     std::shared_ptr<RuleEngine> ruleEngine;
-    std::shared_ptr<DummyInputAdapter> dummyInput;
-    std::unique_ptr<Game> game;
+    std::unique_ptr<GameEngine> game;
 
     TestContext() {
         board = std::make_shared<Board>();
         ruleEngine = std::make_shared<RuleEngine>(board);
-        dummyInput = std::make_shared<DummyInputAdapter>();
-        game = std::make_unique<Game>(board, ruleEngine, dummyInput);
+        game = std::make_unique<GameEngine>(board, ruleEngine);
         game->start();
     }
 };
@@ -79,7 +68,7 @@ TEST_CASE("Real-Time Collision - Edge Cases", "[game][edge-cases]") {
         ctx.board->replacePiece(obstacle, std::make_unique<Pawn>(PlayerColor::White, obstacle));
 
         // ניסיון לנוע לתוך כלי באותו צבע בפינה
-        bool result = ctx.game->requestMove(start, target);
+        bool result = ctx.game->requestMove(start, target).is_accepted;
         
         // מצפים שהמהלך ייחסם כי זה אותו צבע
         REQUIRE(result == false);
@@ -97,7 +86,7 @@ TEST_CASE("Real-Time Collision - Edge Cases", "[game][edge-cases]") {
         ctx.board->replacePiece(obstacle, std::make_unique<Pawn>(PlayerColor::Black, obstacle));
 
         // הצריח מנסה לעבור את כל הלוח
-        bool result = ctx.game->requestMove(rookStart, target);
+        bool result = ctx.game->requestMove(rookStart, target).is_accepted;
 
         // במקרה של אויב באמצע, החוקים צריכים לטפל בזה (או עצירה ליד, או אכילה בהתאם למנוע שלך)
         // בהנחה שהמנוע שלך עוצר לפני כלי אויב או אוכל אותו - נוודא שהוא לא עובר דרכו
@@ -110,7 +99,7 @@ TEST_CASE("Real-Time Collision - Edge Cases", "[game][edge-cases]") {
         ctx.board->replacePiece(pos, std::make_unique<Knight>(PlayerColor::White, pos));
 
         // ניסיון לנוע לאותה משבצת
-        bool result = ctx.game->requestMove(pos, pos);
+        bool result = ctx.game->requestMove(pos, pos).is_accepted;
         
         // מהלך כזה אמור להידחות או לא לשנות כלום
         REQUIRE(result == false);

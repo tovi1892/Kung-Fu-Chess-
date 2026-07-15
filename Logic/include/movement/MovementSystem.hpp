@@ -2,7 +2,6 @@
 
 #include <optional>
 #include "model/Position.hpp"
-#include "model/pieces/Piece.hpp"
 
 namespace kungfu {
 
@@ -12,7 +11,6 @@ public:
     bool isInBounds(const Position& position, int rows, int cols) const;
     bool isSamePosition(const Position& from, const Position& to) const;
     bool canMoveTo(const Position& from, const Position& to) const;
-    bool isValidMove(const Piece& piece, const Position& from, const Position& to) const;
 
     std::optional<Position> pawnDoubleStepMiddle(const Position& from, const Position& to) const;
 };

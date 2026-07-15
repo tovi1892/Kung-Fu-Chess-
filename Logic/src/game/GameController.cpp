@@ -4,14 +4,25 @@
 
 namespace kungfu {
 
-GameController::GameController(std::shared_ptr<Game> game) : game_(std::move(game)) {}
+namespace {
 
-void GameController::attachGame(std::shared_ptr<Game> game) {
+// A cell is selectable when it holds a piece that isn't already mid-motion.
+bool isSelectable(const std::shared_ptr<GameEngine>& game, const Position& pos) {
+    const auto piece = game->getBoard()->pieceAt(pos);
+    return piece.has_value() && piece.value() != nullptr &&
+           piece.value()->state() != PieceState::Moving;
+}
+
+}  // namespace
+
+GameController::GameController(std::shared_ptr<GameEngine> game) : game_(std::move(game)) {}
+
+void GameController::attachGame(std::shared_ptr<GameEngine> game) {
     game_ = std::move(game);
     selectedPosition_.reset();
 }
 
-std::shared_ptr<Game> GameController::game() const {
+std::shared_ptr<GameEngine> GameController::game() const {
     return game_;
 }
 
@@ -22,19 +33,20 @@ bool GameController::handleCellClick(int row, int col) {
 
     const Position clicked(row, col);
     if (!game_->isPositionInBounds(clicked)) {
+        if (selectedPosition_.has_value()) {
+            selectedPosition_.reset();
+        }
         return false;
     }
 
-    const auto clickedPiece = game_->getBoard()->pieceAt(clicked);
     const bool hasSelection = selectedPosition_.has_value();
 
     if (!hasSelection) {
-        if (!clickedPiece.has_value() || !clickedPiece.value()) {
+        if (!isSelectable(game_, clicked)) {
             return false;
         }
-
         selectedPosition_ = clicked;
-        return game_->selectPiece(clicked);
+        return true;
     }
 
     const Position from = *selectedPosition_;
@@ -43,16 +55,16 @@ bool GameController::handleCellClick(int row, int col) {
         return game_->requestJump(clicked);
     }
 
-    if (clickedPiece.has_value() && clickedPiece.value() && isFriendlyPieceAt(clicked)) {
+    if (isFriendlyPieceAt(clicked) && isSelectable(game_, clicked)) {
         selectedPosition_ = clicked;
-        return game_->selectPiece(clicked);
+        return true;
     }
 
-    const bool moved = game_->requestMove(from, clicked);
-    if (moved) {
+    const auto result = game_->requestMove(from, clicked);
+    if (result.is_accepted) {
         selectedPosition_.reset();
     }
-    return moved;
+    return result.is_accepted;
 }
 
 void GameController::handleTimePassed(int ms) {
@@ -84,8 +96,11 @@ bool GameController::selectPiece(const Position& pos) {
     }
 
     if (!selectedPosition_.has_value()) {
+        if (!isSelectable(game_, pos)) {
+            return false;
+        }
         selectedPosition_ = pos;
-        return game_->selectPiece(pos);
+        return true;
     }
 
     if (pos == *selectedPosition_) {
@@ -93,17 +108,16 @@ bool GameController::selectPiece(const Position& pos) {
         return game_->requestJump(pos);
     }
 
-    const auto clickedPiece = game_->getBoard()->pieceAt(pos);
-    if (clickedPiece.has_value() && clickedPiece.value() && game_->isFriendlyPieceAt(pos)) {
+    if (isFriendlyPieceAt(pos) && isSelectable(game_, pos)) {
         selectedPosition_ = pos;
-        return game_->selectPiece(pos);
+        return true;
     }
 
-    const bool moved = game_->requestMove(*selectedPosition_, pos);
-    if (moved) {
+    const auto result = game_->requestMove(*selectedPosition_, pos);
+    if (result.is_accepted) {
         selectedPosition_.reset();
     }
-    return moved;
+    return result.is_accepted;
 }
 
 bool GameController::requestMove(const Position& from, const Position& to) {
@@ -111,11 +125,11 @@ bool GameController::requestMove(const Position& from, const Position& to) {
         return false;
     }
 
-    const bool moved = game_->requestMove(from, to);
-    if (moved) {
+    const auto result = game_->requestMove(from, to);
+    if (result.is_accepted) {
         selectedPosition_.reset();
     }
-    return moved;
+    return result.is_accepted;
 }
 
 bool GameController::requestJump(const Position& pos) {

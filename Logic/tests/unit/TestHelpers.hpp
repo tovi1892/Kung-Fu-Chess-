@@ -3,21 +3,21 @@
 #include <memory>
 
 #include "model/Board.hpp"
-#include "game/Game.hpp"
+#include "engine/GameEngine.hpp"
+#include "game/GameController.hpp"
 #include "game/UIInputAdapter.hpp"
 
 namespace kungfu {
 
-inline std::shared_ptr<Game> createGameWithAdapter(std::shared_ptr<Board> board) {
-    auto gameHolder = std::make_shared<std::shared_ptr<Game>>();
-    auto adapter = std::make_shared<UIInputAdapter>(
-        [gameHolder]() -> IGameInputTarget& { return **gameHolder; });
-    auto game = std::make_shared<Game>(std::move(board), nullptr, adapter);
-    *gameHolder = game;
+// Callers that need to simulate pixel clicks should wrap the returned GameEngine in
+// a GameController and bind a UIInputAdapter to that controller - GameEngine itself
+// no longer implements IGameInputTarget (that's Controller's responsibility).
+inline std::shared_ptr<GameEngine> createGameWithAdapter(std::shared_ptr<Board> board) {
+    auto game = std::make_shared<GameEngine>(std::move(board), nullptr);
     return game;
 }
 
-inline std::shared_ptr<Game> createTestGame() {
+inline std::shared_ptr<GameEngine> createTestGame() {
     return createGameWithAdapter(std::make_shared<Board>());
 }
 

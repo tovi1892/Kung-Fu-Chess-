@@ -22,10 +22,6 @@ bool MovementSystem::canMoveTo(const Position& from, const Position& to) const {
     return isInBounds(from) && isInBounds(to) && !isSamePosition(from, to);
 }
 
-bool MovementSystem::isValidMove(const Piece& piece, const Position& from, const Position& to) const {
-    return canMoveTo(from, to) && piece.isMoveValid(from, to);
-}
-
 std::optional<Position> MovementSystem::pawnDoubleStepMiddle(const Position& from, const Position& to) const {
     const int rowDelta = to.row() - from.row();
     if (std::abs(rowDelta) == 2 && from.col() == to.col()) {

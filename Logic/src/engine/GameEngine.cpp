@@ -1,14 +1,13 @@
-#include "game/Game.hpp"
+#include "engine/GameEngine.hpp"
 #include <algorithm>
 #include <stdexcept>
 #include <cmath>
-#include <utility> 
+#include <utility>
 #include <memory>
 
 #include "model/Board.hpp"
 #include "IGameView.hpp"
 #include "model/GameConfig.hpp"
-#include "model/pieces/Queen.hpp"
 #include "rules/RuleEngine.hpp"
 #include "game/RealTimeArbiter.hpp"
 #include <unordered_map>
@@ -16,75 +15,38 @@
 
 namespace kungfu {
 
-Game::Game() : Game(std::make_shared<Board>(), nullptr, nullptr) {}
+GameEngine::GameEngine() : GameEngine(std::make_shared<Board>(), nullptr) {}
 
-Game::Game(std::shared_ptr<IBoard> board) : Game(std::move(board), nullptr, nullptr) {}
+GameEngine::GameEngine(std::shared_ptr<IBoard> board) : GameEngine(std::move(board), nullptr) {}
 
-Game::Game(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngine> ruleEngine)
-    : Game(std::move(board), std::move(ruleEngine), nullptr) {}
-
-Game::Game(std::shared_ptr<IBoard> board,
-           std::shared_ptr<IRuleEngine> ruleEngine,
-           IGameInputAdapterPtr inputAdapter)
+GameEngine::GameEngine(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngine> ruleEngine)
     : state_(GameState::NotStarted),
       board_(std::move(board)),
       ruleEngine_(std::move(ruleEngine)),
-      collisionSystem_(std::make_unique<CollisionSystem>(board_)),
-      arbiter_(std::make_unique<RealTimeArbiter>(board_)), 
-      inputAdapter_(std::move(inputAdapter)) {
+      arbiter_(std::make_unique<RealTimeArbiter>(board_)) {
     if (!ruleEngine_) {
         ruleEngine_ = std::make_shared<RuleEngine>(board_);
     }
 }
 
-bool Game::selectPiece(const Position& pos) {
+MoveResult GameEngine::requestMove(const Position& from, const Position& to) {
     if (state_ != GameState::Running) {
-        return false;
+        return {false, "game_over"};
     }
 
-    const auto piece = board_->pieceAt(pos);
-    if (!piece.has_value()) {
-        return false;
-    }
-
-    if (piece.value()->state() == PieceState::Moving) {
-        return false;
-    }
-
-    return true;
-}
-
-bool Game::requestMove(const Position& from, const Position& to) {
-    if (state_ != GameState::Running) {
-        return false;
-    }
-
-    if (!ruleEngine_->isValidMove(from, to)) {
-        return false;
+    const auto validation = ruleEngine_->validateMove(from, to);
+    if (!validation.is_valid) {
+        return {false, validation.reason};
     }
 
     const auto movingPieceOpt = board_->pieceAt(from);
     if (!movingPieceOpt.has_value() || movingPieceOpt.value() == nullptr) {
-        return false;
+        return {false, "empty_source"};
     }
     Piece* movingPiece = movingPieceOpt.value();
 
     if (movingPiece->state() == PieceState::Moving) {
-        return false;
-    }
-
-    // הוסרו בדיקות ה-isFriendlyBlock כדי לאפשר תנועה ידידותית בטסטים
-    
-    PieceType type = movingPiece->type();
-    if (type == PieceType::Queen || type == PieceType::Rook || type == PieceType::Bishop) {
-        if (!collisionSystem_->isPathClear(from, to)) {
-            return false;
-        }
-    }
-
-    const auto middle = movementSystem_.pawnDoubleStepMiddle(from, to);
-    if (middle.has_value() && !collisionSystem_->isPathClear(from, to)) {
-        return false;
+        return {false, "piece_already_moving"};
     }
 
     int rowDelta = to.row() - from.row();
@@ -111,59 +73,46 @@ bool Game::requestMove(const Position& from, const Position& to) {
     arbiter_->addMove(pm);
     movingPiece->setState(PieceState::Moving);
 
-    return true;
+    return {true, "ok"};
 }
 
-bool Game::requestJump(const Position& pos) {
+bool GameEngine::requestJump(const Position& pos) {
     return tryJump(pos);
 }
 
-bool Game::hasSelection() const {
-    return false;
-}
-
-std::optional<Position> Game::selectedPosition() const {
-    return std::nullopt;
-}
-
-bool Game::isFriendlyPieceAt(const Position& pos) const {
-    const auto piece = board_->pieceAt(pos);
-    return piece.has_value() && piece.value() != nullptr;
-}
-
-bool Game::isPositionInBounds(const Position& pos) const {
+bool GameEngine::isPositionInBounds(const Position& pos) const {
     return movementSystem_.isInBounds(pos, boardRows(), boardCols());
 }
 
-int Game::boardRows() const {
+int GameEngine::boardRows() const {
     return board_ ? board_->rows() : GameConfig::kBoardSize;
 }
 
-int Game::boardCols() const {
+int GameEngine::boardCols() const {
     return board_ ? board_->cols() : GameConfig::kBoardSize;
 }
 
-void Game::start() {
+void GameEngine::start() {
     state_ = GameState::Running;
 }
 
-void Game::stop() {
+void GameEngine::stop() {
     state_ = GameState::Paused;
 }
 
-bool Game::isRunning() const {
+bool GameEngine::isRunning() const {
     return state_ == GameState::Running;
 }
 
-bool Game::isFinished() const {
+bool GameEngine::isFinished() const {
     return state_ == GameState::Finished;
 }
 
-std::shared_ptr<IBoard> Game::getBoard() const {
+std::shared_ptr<IBoard> GameEngine::getBoard() const {
     return board_;
 }
 
-std::vector<RenderPiece> Game::getRenderState() const {
+std::vector<RenderPiece> GameEngine::getRenderState() const {
     // Delegate to board and augment with arbiter-provided interpolations
     auto render = std::dynamic_pointer_cast<Board>(board_)->getRenderState();
     if (!arbiter_) return render;
@@ -208,7 +157,7 @@ std::vector<RenderPiece> Game::getRenderState() const {
     return render;
 }
 
-std::string Game::getPieceToken(const Piece* piece) const {
+std::string GameEngine::getPieceToken(const Piece* piece) const {
     if (!piece) return ".";
     std::string token = (piece->color() == PlayerColor::White) ? "w" : "b";
     switch (piece->type()) {
@@ -222,13 +171,7 @@ std::string Game::getPieceToken(const Piece* piece) const {
     return token;
 }
 
-void Game::click(int x, int y) {
-    if (inputAdapter_) {
-        inputAdapter_->handleClick(x, y);
-    }
-}
-
-void Game::wait(int ms) {
+void GameEngine::wait(int ms) {
     if (state_ != GameState::Running) {
         return;
     }
@@ -240,7 +183,7 @@ void Game::wait(int ms) {
     }
 }
 
-void Game::printBoard(std::ostream& out) const {
+void GameEngine::printBoard(std::ostream& out) const {
     int maxRows = boardRows();
     int maxCols = boardCols();
 
@@ -260,68 +203,7 @@ void Game::printBoard(std::ostream& out) const {
     }
 }
 
-bool Game::tryMove(const Position& from, const Position& to) {
-    if (state_ != GameState::Running) {
-        return false;
-    }
-
-    if (!ruleEngine_->isValidMove(from, to)) {
-        return false;
-    }
-
-    const auto sourcePieceOpt = board_->pieceAt(from);
-    if (!sourcePieceOpt.has_value() || sourcePieceOpt.value()->state() == PieceState::Moving) {
-        return false;
-    }
-
-    Piece* sourcePiece = sourcePieceOpt.value();
-    if (sourcePiece == nullptr) {
-        return false;
-    }
-
-    // הוסרה בדיקת ה-isFriendlyBlock
-    
-    PieceType type = sourcePiece->type();
-    if (type == PieceType::Queen || type == PieceType::Rook || type == PieceType::Bishop) {
-        if (!collisionSystem_->isPathClear(from, to)) {
-            return false;
-        }
-    }
-
-    const auto middle = movementSystem_.pawnDoubleStepMiddle(from, to);
-    if (middle.has_value() && !collisionSystem_->isPathClear(from, to)) {
-        return false;
-    }
-
-    const auto targetPiece = board_->pieceAt(to);
-    
-    // אכילה / הסרת כלי
-    bool capturedKing = false;
-    if (targetPiece.has_value() && targetPiece.value()) {
-        if (targetPiece.value()->color() != sourcePiece->color() || sourcePiece->type() == PieceType::Knight) {
-            capturedKing = targetPiece.value()->type() == PieceType::King;
-            board_->removePiece(to);
-        }
-    }
-
-    if (!board_->movePiece(from, to)) {
-        return false;
-    }
-
-    // קידום חייל
-    if (sourcePiece->type() == PieceType::Pawn && ruleEngine_->isPawnPromotion(to, sourcePiece->color())) {
-        board_->replacePiece(to, std::make_unique<Queen>(sourcePiece->color(), to));
-    }
-
-    if (capturedKing) {
-        state_ = GameState::Finished;
-        return true;
-    }
-
-    return true;
-}
-
-bool Game::tryJump(const Position& cell) {
+bool GameEngine::tryJump(const Position& cell) {
     if (state_ != GameState::Running) {
         return false;
     }
@@ -342,7 +224,7 @@ bool Game::tryJump(const Position& cell) {
     return true;
 }
 
-void Game::resolveJump(const Position& cell) {
+void GameEngine::resolveJump(const Position& cell) {
     const auto piece = board_->pieceAt(cell);
     if (!piece.has_value() || !piece.value()->isAirborne()) {
         return;
@@ -350,7 +232,7 @@ void Game::resolveJump(const Position& cell) {
     piece.value()->setState(PieceState::Idle);
 }
 
-bool Game::handleArrivalAtAirbornCell(const Position& cell, const Position& arrivingFrom) {
+bool GameEngine::handleArrivalAtAirbornCell(const Position& cell, const Position& arrivingFrom) {
     const auto airbornePiece = board_->pieceAt(cell);
     if (!airbornePiece.has_value() || !airbornePiece.value()->isAirborne()) {
         return false;

@@ -4,17 +4,17 @@
 #include <optional>
 
 #include "model/Position.hpp"
-#include "game/Game.hpp"
+#include "engine/GameEngine.hpp"
 #include "game/IGameInputAdapter.hpp"
 
 namespace kungfu {
 
 class GameController final : public IGameInputTarget {
 public:
-    explicit GameController(std::shared_ptr<Game> game);
+    explicit GameController(std::shared_ptr<GameEngine> game);
 
-    void attachGame(std::shared_ptr<Game> game);
-    std::shared_ptr<Game> game() const;
+    void attachGame(std::shared_ptr<GameEngine> game);
+    std::shared_ptr<GameEngine> game() const;
 
     bool handleCellClick(int row, int col);
     void handleTimePassed(int ms);
@@ -31,7 +31,7 @@ public:
     int boardCols() const override;
 
 private:
-    std::shared_ptr<Game> game_;
+    std::shared_ptr<GameEngine> game_;
     std::optional<Position> selectedPosition_;
 };
 

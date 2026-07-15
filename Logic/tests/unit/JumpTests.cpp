@@ -1,6 +1,6 @@
 #include <catch2/catch.hpp>
 #include "model/Board.hpp"
-#include "game/Game.hpp"
+#include "engine/GameEngine.hpp"
 #include "model/pieces/Rook.hpp"
 #include "TestHelpers.hpp"
 

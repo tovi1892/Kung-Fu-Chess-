@@ -5,7 +5,7 @@
 #include "BoardParser.hpp"
 #include "model/Board.hpp"
 #include "model/GameConfig.hpp"
-#include "game/Game.hpp"
+#include "engine/GameEngine.hpp"
 #include "game/GameController.hpp"
 #include "rules/RuleEngine.hpp"
 
@@ -59,7 +59,7 @@ int main() {
     }
 
     auto ruleEngine = std::make_shared<RuleEngine>(board);
-    auto game = std::make_shared<Game>(board, ruleEngine);
+    auto game = std::make_shared<GameEngine>(board, ruleEngine);
     game->start();
 
     auto controller = std::make_shared<GameController>(game);

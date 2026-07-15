@@ -44,7 +44,7 @@ TEST_CASE("GameController owns selection state", "[controller]") {
     auto board = std::make_shared<kungfu::Board>();
     board->placePiece(std::make_unique<kungfu::Rook>(kungfu::PlayerColor::White, kungfu::Position(0, 0)), kungfu::Position(0, 0));
 
-    auto game = std::make_shared<kungfu::Game>(board, nullptr, nullptr);
+    auto game = std::make_shared<kungfu::GameEngine>(board, nullptr);
     game->start();
 
     kungfu::GameController controller(game);

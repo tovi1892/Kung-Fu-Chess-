@@ -1,11 +1,11 @@
 #include <catch2/catch.hpp>
 #include "model/Board.hpp"
-#include "game/Game.hpp"
+#include "engine/GameEngine.hpp"
 #include "model/pieces/King.hpp"
 #include "model/pieces/Rook.hpp"
 #include "TestHelpers.hpp"
 
-TEST_CASE("Game state and logic flow", "[game]") {
+TEST_CASE("GameEngine state and logic flow", "[game]") {
     auto game = kungfu::createTestGame();
 
     SECTION("Basic state machine") {
@@ -23,7 +23,8 @@ TEST_CASE("Game state and logic flow", "[game]") {
 
         auto g = kungfu::createGameWithAdapter(board);
         g->start();
-        REQUIRE(g->tryMove(kungfu::Position(0, 0), kungfu::Position(1, 1)) == true);
+        REQUIRE(g->requestMove(kungfu::Position(0, 0), kungfu::Position(1, 1)).is_accepted == true);
+        g->wait(1000);
         REQUIRE(g->isFinished() == true);
     }
 }

@@ -3,7 +3,6 @@
 #include <memory>
 #include "model/IBoard.hpp"
 #include "model/Position.hpp"
-#include "movement/MovementSystem.hpp"
 #include "rules/IRuleEngine.hpp"
 
 namespace kungfu {
@@ -18,7 +17,6 @@ public:
 
 private:
     BoardPtr board_;
-    MovementSystem movementSystem_;
 };
 
 using RuleEnginePtr = std::shared_ptr<RuleEngine>;

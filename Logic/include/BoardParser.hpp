@@ -5,7 +5,8 @@
 #include <string>
 #include <vector>
 #include "model/Board.hpp"
-#include "game/Game.hpp"
+#include "engine/GameEngine.hpp"
+#include "game/UIInputAdapter.hpp"
 
 namespace kungfu {
 
@@ -20,7 +21,8 @@ private:
     bool parseBoardLines(const std::vector<std::string>& boardLines,
                          std::shared_ptr<Board>& board,
                          std::string& errorMessage) const;
-    void executeCommands(const std::shared_ptr<Game>& game,
+    void executeCommands(const std::shared_ptr<GameEngine>& game,
+                         const std::shared_ptr<UIInputAdapter>& adapter,
                          const std::vector<std::string>& commands) const;
 };
 
