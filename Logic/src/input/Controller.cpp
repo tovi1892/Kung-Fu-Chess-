@@ -1,6 +1,7 @@
-#include "game/GameController.hpp"
+#include "input/Controller.hpp"
 
 #include <utility>
+#include "model/GameConfig.hpp"
 
 namespace kungfu {
 
@@ -13,20 +14,40 @@ bool isSelectable(const std::shared_ptr<GameEngine>& game, const Position& pos) 
            piece.value()->state() != PieceState::Moving;
 }
 
+int clampToBoard(int value, int maxBound) {
+    if (value < 0) {
+        return 0;
+    }
+    if (value >= maxBound) {
+        return maxBound - 1;
+    }
+    return value;
+}
+
 }  // namespace
 
-GameController::GameController(std::shared_ptr<GameEngine> game) : game_(std::move(game)) {}
+Controller::Controller(std::shared_ptr<GameEngine> game) : game_(std::move(game)) {}
 
-void GameController::attachGame(std::shared_ptr<GameEngine> game) {
+bool Controller::handleClick(int x, int y) {
+    if (!game_ || !game_->isRunning()) {
+        return false;
+    }
+
+    const int row = clampToBoard(y / GameConfig::kCellSizePx, boardRows());
+    const int col = clampToBoard(x / GameConfig::kCellSizePx, boardCols());
+    return handleCellClick(row, col);
+}
+
+void Controller::attachGame(std::shared_ptr<GameEngine> game) {
     game_ = std::move(game);
     selectedPosition_.reset();
 }
 
-std::shared_ptr<GameEngine> GameController::game() const {
+std::shared_ptr<GameEngine> Controller::game() const {
     return game_;
 }
 
-bool GameController::handleCellClick(int row, int col) {
+bool Controller::handleCellClick(int row, int col) {
     if (!game_ || !game_->isRunning()) {
         return false;
     }
@@ -67,18 +88,18 @@ bool GameController::handleCellClick(int row, int col) {
     return result.is_accepted;
 }
 
-void GameController::handleTimePassed(int ms) {
+void Controller::handleTimePassed(int ms) {
     if (!game_) {
         return;
     }
     game_->wait(ms);
 }
 
-bool GameController::isRunning() const {
+bool Controller::isRunning() const {
     return game_ ? game_->isRunning() : false;
 }
 
-bool GameController::isFriendlyPieceAt(const Position& pos) const {
+bool Controller::isFriendlyPieceAt(const Position& pos) const {
     if (!game_ || !selectedPosition_.has_value()) {
         return false;
     }
@@ -90,7 +111,7 @@ bool GameController::isFriendlyPieceAt(const Position& pos) const {
            selectedPiece.value()->color() == targetPiece.value()->color();
 }
 
-bool GameController::selectPiece(const Position& pos) {
+bool Controller::selectPiece(const Position& pos) {
     if (!game_) {
         return false;
     }
@@ -120,7 +141,7 @@ bool GameController::selectPiece(const Position& pos) {
     return result.is_accepted;
 }
 
-bool GameController::requestMove(const Position& from, const Position& to) {
+bool Controller::requestMove(const Position& from, const Position& to) {
     if (!game_) {
         return false;
     }
@@ -132,7 +153,7 @@ bool GameController::requestMove(const Position& from, const Position& to) {
     return result.is_accepted;
 }
 
-bool GameController::requestJump(const Position& pos) {
+bool Controller::requestJump(const Position& pos) {
     if (!game_) {
         return false;
     }
@@ -144,23 +165,23 @@ bool GameController::requestJump(const Position& pos) {
     return jumped;
 }
 
-bool GameController::hasSelection() const {
+bool Controller::hasSelection() const {
     return selectedPosition_.has_value();
 }
 
-std::optional<Position> GameController::selectedPosition() const {
+std::optional<Position> Controller::selectedPosition() const {
     return selectedPosition_;
 }
 
-bool GameController::isPositionInBounds(const Position& pos) const {
+bool Controller::isPositionInBounds(const Position& pos) const {
     return game_ ? game_->isPositionInBounds(pos) : false;
 }
 
-int GameController::boardRows() const {
+int Controller::boardRows() const {
     return game_ ? game_->boardRows() : 0;
 }
 
-int GameController::boardCols() const {
+int Controller::boardCols() const {
     return game_ ? game_->boardCols() : 0;
 }
 

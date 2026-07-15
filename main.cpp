@@ -2,11 +2,11 @@
 #include <memory>
 #include <sstream>
 
-#include "BoardParser.hpp"
+#include "io/BoardParser.hpp"
 #include "model/Board.hpp"
 #include "model/GameConfig.hpp"
 #include "engine/GameEngine.hpp"
-#include "game/GameController.hpp"
+#include "input/Controller.hpp"
 #include "rules/RuleEngine.hpp"
 
 #include "CoordinateMapper.hpp"
@@ -33,7 +33,7 @@ bR bN bB bQ bK bB bN bR
 // Translates raw pixel clicks from the view into board-cell clicks on the controller.
 class BoardClickHandler : public IInputHandler {
 public:
-    BoardClickHandler(GameController& controller, CoordinateMapper mapper)
+    BoardClickHandler(Controller& controller, CoordinateMapper mapper)
         : controller_(controller), mapper_(mapper) {}
 
     void handleClick(int x, int y) override {
@@ -44,7 +44,7 @@ public:
     std::optional<int> pollEvent() override { return std::nullopt; }
 
 private:
-    GameController& controller_;
+    Controller& controller_;
     CoordinateMapper mapper_;
 };
 
@@ -62,7 +62,7 @@ int main() {
     auto game = std::make_shared<GameEngine>(board, ruleEngine);
     game->start();
 
-    auto controller = std::make_shared<GameController>(game);
+    auto controller = std::make_shared<Controller>(game);
 
     const int windowSize = 800;
     CoordinateMapper mapper(windowSize, windowSize, GameConfig::kBoardSize, GameConfig::kBoardSize);

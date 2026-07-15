@@ -1,4 +1,4 @@
-#include "game/RealTimeArbiter.hpp"
+#include "realtime/RealTimeArbiter.hpp"
 #include <iostream>
 #include <algorithm>
 #include "model/GameConfig.hpp"
@@ -36,98 +36,117 @@ void RealTimeArbiter::advanceTime(int ms) {
             auto& pm = pendingMoves_[i];
             if (!pm.active) continue;
 
-            if (currentTimeMs_ == pm.nextStepTimeMs || currentTimeMs_ == pm.arrivalTimeMs) {
-                Position nextPos(pm.currentPos.row() + pm.rowStep, pm.currentPos.col() + pm.colStep);
+            auto currentPieceOpt = board_->pieceAt(pm.currentPos);
+            if (!currentPieceOpt.has_value() || currentPieceOpt.value() == nullptr) {
+                pm.active = false;
+                continue;
+            }
+            Piece* currentPiece = currentPieceOpt.value();
 
-                auto currentPieceOpt = board_->pieceAt(pm.currentPos);
-                if (!currentPieceOpt.has_value() || currentPieceOpt.value() == nullptr) {
-                    pm.active = false;
+            // Knights jump in one L-shaped hop: there is no intermediate square
+            // to block or be captured along the way, so nothing happens until
+            // arrival, and only the landing square (pm.to) is ever inspected -
+            // never whatever the knight jumped over.
+            if (currentPiece->type() == PieceType::Knight) {
+                if (currentTimeMs_ != pm.arrivalTimeMs) {
                     continue;
                 }
-                Piece* currentPiece = currentPieceOpt.value();
+                pm.active = false;
+
+                const auto targetPieceOpt = board_->pieceAt(pm.to);
+                if (targetPieceOpt.has_value() && targetPieceOpt.value() != nullptr) {
+                    Piece* target = targetPieceOpt.value();
+                    if (target->color() == currentPiece->color()) {
+                        // Can never land on a friendly-occupied square - the jump aborts in place.
+                        currentPiece->setState(PieceState::Idle);
+                        continue;
+                    }
+
+                    const bool capturedKing = (target->type() == PieceType::King);
+                    board_->removePiece(pm.to);
+                    board_->movePiece(pm.currentPos, pm.to);
+                    pm.currentPos = pm.to;
+                    currentPiece->setState(PieceState::Idle);
+                    if (capturedKing) {
+                        kingCaptured_ = true;
+                        return;
+                    }
+                    continue;
+                }
+
+                board_->movePiece(pm.currentPos, pm.to);
+                pm.currentPos = pm.to;
+                currentPiece->setState(PieceState::Idle);
+                continue;
+            }
+
+            if (currentTimeMs_ == pm.nextStepTimeMs || currentTimeMs_ == pm.arrivalTimeMs) {
+                Position nextPos(pm.currentPos.row() + pm.rowStep, pm.currentPos.col() + pm.colStep);
 
                 auto targetPieceOpt = board_->pieceAt(nextPos);
                 if (targetPieceOpt.has_value() && targetPieceOpt.value() != nullptr) {
                     Piece* target = targetPieceOpt.value();
 
-                    // חוק 8: פרש נוחת ביעד הסופי שלו (מחסל כל כלי, גם ידידותי)
-                    if (currentPiece->type() == PieceType::Knight && nextPos == pm.to) {
-                        bool capturedKing = (target->type() == PieceType::King);
-                        board_->removePiece(nextPos);
-                        board_->movePiece(pm.currentPos, nextPos);
-                        pm.currentPos = nextPos;
-
-                        if (capturedKing) {
-                            kingCaptured_ = true;
-                            pm.active = false;
-                            return;
+                    // בדיקה האם כלי היעד נמצא כרגע בתנועה פעילה משלו
+                    PendingMove* otherPm = nullptr;
+                    for (auto& opm : pendingMoves_) {
+                        if (opm.active && opm.currentPos == nextPos) {
+                            otherPm = &opm;
+                            break;
                         }
                     }
-                    else {
-                        // בדיקה האם כלי היעד נמצא כרגע בתנועה פעילה משלו
-                        PendingMove* otherPm = nullptr;
-                        for (auto& opm : pendingMoves_) {
-                            if (opm.active && opm.currentPos == nextPos) {
-                                otherPm = &opm;
-                                break;
-                            }
-                        }
 
-                        // חוק 5: פרשים מוחרגים מהתנגשויות במסלול השיוט שלהם
-                        bool isKnightInvolved = (currentPiece->type() == PieceType::Knight || target->type() == PieceType::Knight);
-
-                        if (otherPm != nullptr && !isKnightInvolved) {
-                            // התנגשות דינמית בזמן תנועה של שני כלים (Active Collision)
-                            if (target->color() == currentPiece->color()) {
-                                // חוק 6: התנגשות ידידים - הכלי שמנסה להיכנס (pm) נעצר במקומו מיד
-                                currentPiece->setState(PieceState::Idle);
-                                pm.active = false;
-                                continue; 
-                            } else {
-                                // חוק 5: התנגשות אויבים - זה שהתחיל לזוז קודם (startTimeMs נמוך יותר) מנצח!
-                                if (pm.startTimeMs < otherPm->startTimeMs) {
-                                    // pm מנצח ומחסל את otherPm
-                                    target->setState(PieceState::Captured);
-                                    board_->removePiece(nextPos);
-                                    otherPm->active = false;
-
-                                    board_->movePiece(pm.currentPos, nextPos);
-                                    pm.currentPos = nextPos;
-                                } else {
-                                    // otherPm מנצח ומחסל את pm
-                                    currentPiece->setState(PieceState::Captured);
-                                    board_->removePiece(pm.currentPos);
-                                    pm.active = false;
-                                    continue;
-                                }
-                            }
+                    if (otherPm != nullptr) {
+                        // התנגשות דינמית בזמן תנועה של שני כלים (Active Collision)
+                        if (target->color() == currentPiece->color()) {
+                            // חוק 6: התנגשות ידידים - הכלי שמנסה להיכנס (pm) נעצר במקומו מיד
+                            currentPiece->setState(PieceState::Idle);
+                            pm.active = false;
+                            continue;
                         } else {
-                            // הכלי ביעד סטטי (אינו זז) או שאחד מהם הוא פרש המדלג מעליו
-                            if (target->color() == currentPiece->color()) {
-                                // חסימה סטטית ידידותית (עבור כלים שאינם פרש)
-                                currentPiece->setState(PieceState::Idle);
-                                pm.active = false;
-                                continue;
-                            } else {
-                                // הכאה רגילה של אויב סטטי
-                                bool capturedKing = (target->type() == PieceType::King);
-
-                                // עצירת תנועות אחרות שרצו אל אותה משבצת היעד שנתפסה כעת
-                                for (auto& otherPm : pendingMoves_) {
-                                    if (otherPm.active && otherPm.currentPos == nextPos) {
-                                        otherPm.active = false;
-                                    }
-                                }
-
+                            // חוק 5: התנגשות אויבים - זה שהתחיל לזוז קודם (startTimeMs נמוך יותר) מנצח!
+                            if (pm.startTimeMs < otherPm->startTimeMs) {
+                                // pm מנצח ומחסל את otherPm
+                                target->setState(PieceState::Captured);
                                 board_->removePiece(nextPos);
+                                otherPm->active = false;
+
                                 board_->movePiece(pm.currentPos, nextPos);
                                 pm.currentPos = nextPos;
+                            } else {
+                                // otherPm מנצח ומחסל את pm
+                                currentPiece->setState(PieceState::Captured);
+                                board_->removePiece(pm.currentPos);
+                                pm.active = false;
+                                continue;
+                            }
+                        }
+                    } else {
+                        // הכלי ביעד סטטי (אינו זז)
+                        if (target->color() == currentPiece->color()) {
+                            // חסימה סטטית ידידותית
+                            currentPiece->setState(PieceState::Idle);
+                            pm.active = false;
+                            continue;
+                        } else {
+                            // הכאה רגילה של אויב סטטי
+                            bool capturedKing = (target->type() == PieceType::King);
 
-                                if (capturedKing) {
-                                    kingCaptured_ = true;
-                                    pm.active = false;
-                                    return;
+                            // עצירת תנועות אחרות שרצו אל אותה משבצת היעד שנתפסה כעת
+                            for (auto& otherPm2 : pendingMoves_) {
+                                if (otherPm2.active && otherPm2.currentPos == nextPos) {
+                                    otherPm2.active = false;
                                 }
+                            }
+
+                            board_->removePiece(nextPos);
+                            board_->movePiece(pm.currentPos, nextPos);
+                            pm.currentPos = nextPos;
+
+                            if (capturedKing) {
+                                kingCaptured_ = true;
+                                pm.active = false;
+                                return;
                             }
                         }
                     }

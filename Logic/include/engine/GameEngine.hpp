@@ -2,7 +2,6 @@
 
 #include <memory>
 #include <optional>
-#include <iostream>
 #include <string>
 #include <vector>
 #include "model/IBoard.hpp"
@@ -11,7 +10,7 @@
 #include "movement/MovementSystem.hpp"
 #include "model/pieces/Piece.hpp"
 #include "rules/IRuleEngine.hpp"
-#include "game/RealTimeArbiter.hpp"
+#include "realtime/RealTimeArbiter.hpp"
 
 // Forward-declare render struct from Core_Interfaces to avoid direct header dependency
 namespace kungfu { struct RenderPiece; }
@@ -43,7 +42,6 @@ public:
     bool isFinished() const;
 
     void wait(int ms);
-    void printBoard(std::ostream& out) const;
 
     MoveResult requestMove(const Position& from, const Position& to);
     bool requestJump(const Position& pos);
@@ -64,8 +62,6 @@ public:
     int boardCols() const;
 
 private:
-    std::string getPieceToken(const Piece* piece) const;
-
     GameState state_;
     std::shared_ptr<IBoard> board_;
     std::shared_ptr<IRuleEngine> ruleEngine_;

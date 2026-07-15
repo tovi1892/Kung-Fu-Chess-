@@ -9,7 +9,7 @@
 #include "IGameView.hpp"
 #include "model/GameConfig.hpp"
 #include "rules/RuleEngine.hpp"
-#include "game/RealTimeArbiter.hpp"
+#include "realtime/RealTimeArbiter.hpp"
 #include <unordered_map>
 #include <cstdint>
 
@@ -157,20 +157,6 @@ std::vector<RenderPiece> GameEngine::getRenderState() const {
     return render;
 }
 
-std::string GameEngine::getPieceToken(const Piece* piece) const {
-    if (!piece) return ".";
-    std::string token = (piece->color() == PlayerColor::White) ? "w" : "b";
-    switch (piece->type()) {
-        case PieceType::King:   token += "K"; break;
-        case PieceType::Queen:  token += "Q"; break;
-        case PieceType::Rook:   token += "R"; break;
-        case PieceType::Bishop: token += "B"; break;
-        case PieceType::Knight: token += "N"; break;
-        case PieceType::Pawn:   token += "P"; break;
-    }
-    return token;
-}
-
 void GameEngine::wait(int ms) {
     if (state_ != GameState::Running) {
         return;
@@ -180,26 +166,6 @@ void GameEngine::wait(int ms) {
 
     if (arbiter_->isKingCaptured()) {
         state_ = GameState::Finished;
-    }
-}
-
-void GameEngine::printBoard(std::ostream& out) const {
-    int maxRows = boardRows();
-    int maxCols = boardCols();
-
-    for (int r = 0; r < maxRows; ++r) {
-        for (int c = 0; c < maxCols; ++c) {
-            auto piece = board_->pieceAt(Position(r, c));
-            if (piece.has_value()) {
-                out << getPieceToken(piece.value());
-            } else {
-                out << ".";
-            }
-            if (c + 1 < maxCols) {
-                out << " ";
-            }
-        }
-        out << "\n";
     }
 }
 

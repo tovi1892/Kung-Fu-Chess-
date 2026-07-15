@@ -4,14 +4,12 @@
 
 #include "model/Board.hpp"
 #include "engine/GameEngine.hpp"
-#include "game/GameController.hpp"
-#include "game/UIInputAdapter.hpp"
+#include "input/Controller.hpp"
 
 namespace kungfu {
 
-// Callers that need to simulate pixel clicks should wrap the returned GameEngine in
-// a GameController and bind a UIInputAdapter to that controller - GameEngine itself
-// no longer implements IGameInputTarget (that's Controller's responsibility).
+// Callers that need to simulate pixel/cell clicks should wrap the returned
+// GameEngine in a Controller and call Controller::handleClick/handleCellClick.
 inline std::shared_ptr<GameEngine> createGameWithAdapter(std::shared_ptr<Board> board) {
     auto game = std::make_shared<GameEngine>(std::move(board), nullptr);
     return game;
