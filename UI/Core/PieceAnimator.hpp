@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <unordered_map>
 
-#include "AssetManager.hpp"
+#include "Core/SpriteSequence.hpp"
 #include "model/Enums.hpp"
 
 namespace kungfu {

@@ -40,18 +40,6 @@ bool extractBoolField(const std::string& json, const std::string& key) {
 
 }  // namespace
 
-const SpriteSequence& PieceAnimationSet::forState(PieceState state) const {
-    switch (state) {
-        case PieceState::Moving:   return move;
-        case PieceState::Airborne: return jump;
-        case PieceState::Cooldown: return longRest;
-        case PieceState::Idle:
-        case PieceState::Captured:
-        default:
-            return idle;
-    }
-}
-
 std::string AssetManager::folderName(PieceType type, PlayerColor color) {
     char kind = '?';
     switch (type) {

@@ -3,8 +3,8 @@
 #include "IGameView.hpp"
 #include "Img/img.hpp"
 #include "AssetManager.hpp"
-#include "PieceAnimator.hpp"
-#include "CoordinateMapper.hpp"
+#include "Core/PieceAnimator.hpp"
+#include "Core/CoordinateMapper.hpp"
 #include <string>
 
 namespace kungfu {

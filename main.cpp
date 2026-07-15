@@ -9,7 +9,7 @@
 #include "input/Controller.hpp"
 #include "rules/RuleEngine.hpp"
 
-#include "CoordinateMapper.hpp"
+#include "Core/CoordinateMapper.hpp"
 #include "UI_OpenCV/OpenCvView.hpp"
 #include "IInputHandler.hpp"
 
