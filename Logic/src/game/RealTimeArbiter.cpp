@@ -2,11 +2,27 @@
 #include <iostream>
 #include <algorithm>
 #include "model/GameConfig.hpp"
+#include "model/pieces/Queen.hpp"
 
 namespace kungfu {
 
 RealTimeArbiter::RealTimeArbiter(std::shared_ptr<IBoard> board)
     : board_(std::move(board)), currentTimeMs_(0), kingCaptured_(false) {}
+
+void RealTimeArbiter::promoteIfNeeded(const Position& pos) {
+    const auto pieceOpt = board_->pieceAt(pos);
+    if (!pieceOpt.has_value() || pieceOpt.value() == nullptr ||
+        pieceOpt.value()->type() != PieceType::Pawn) {
+        return;
+    }
+    const PlayerColor color = pieceOpt.value()->color();
+    const int promotionRow = (color == PlayerColor::White)
+                                  ? GameConfig::kWhitePawnPromotionRow
+                                  : GameConfig::kBlackPawnPromotionRow;
+    if (pos.row() == promotionRow) {
+        board_->replacePiece(pos, std::make_unique<Queen>(color, pos));
+    }
+}
 
 void RealTimeArbiter::addMove(const PendingMove& pm) {
     pendingMoves_.push_back(pm);
@@ -127,6 +143,7 @@ void RealTimeArbiter::advanceTime(int ms) {
                     if (auto movedPiece = board_->pieceAt(pm.to); movedPiece.has_value()) {
                         movedPiece.value()->setState(PieceState::Idle);
                     }
+                    promoteIfNeeded(pm.to);
                 } else {
                     pm.nextStepTimeMs += GameConfig::kMsPerCell;
                 }

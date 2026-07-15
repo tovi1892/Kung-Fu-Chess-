@@ -2,6 +2,25 @@
 
 namespace kungfu {
 
+bool isPathClear(const IBoard& board, const Position& from, const Position& to) {
+    const int rowDelta = to.row() - from.row();
+    const int colDelta = to.col() - from.col();
+    const int rowStep = (rowDelta == 0) ? 0 : (rowDelta > 0 ? 1 : -1);
+    const int colStep = (colDelta == 0) ? 0 : (colDelta > 0 ? 1 : -1);
+
+    int r = from.row() + rowStep;
+    int c = from.col() + colStep;
+    while (r != to.row() || c != to.col()) {
+        auto pieceOpt = board.pieceAt(Position(r, c));
+        if (pieceOpt.has_value() && pieceOpt.value() != nullptr) {
+            return false;
+        }
+        r += rowStep;
+        c += colStep;
+    }
+    return true;
+}
+
 CollisionSystem::CollisionSystem(BoardPtr board) : board_(std::move(board)) {}
 
 std::optional<Piece*> CollisionSystem::findCollision(const Position& from, const Position& to) const {
@@ -43,23 +62,7 @@ bool CollisionSystem::isPathClear(const Position& from, const Position& to) cons
     if (!board_) {
         return false;
     }
-    const int rowDelta = to.row() - from.row();
-    const int colDelta = to.col() - from.col();
-    const int rowStep = (rowDelta == 0) ? 0 : (rowDelta > 0 ? 1 : -1);
-    const int colStep = (colDelta == 0) ? 0 : (colDelta > 0 ? 1 : -1);
-
-    int r = from.row() + rowStep;
-    int c = from.col() + colStep;
-    while (r != to.row() || c != to.col()) {
-        auto pieceOpt = board_->pieceAt(Position(r, c));
-        // תיקון קריטי: משבצת נחשבת חסומה רק אם יש בה פוינטר תקני של כלי משחק
-        if (pieceOpt.has_value() && pieceOpt.value() != nullptr) {
-            return false;
-        }
-        r += rowStep;
-        c += colStep;
-    }
-    return true;
+    return kungfu::isPathClear(*board_, from, to);
 }
 
 }  // namespace kungfu

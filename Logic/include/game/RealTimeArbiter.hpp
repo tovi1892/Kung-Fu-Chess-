@@ -38,6 +38,8 @@ public:
     bool hasActiveMoves() const { return !pendingMoves_.empty(); }
 
 private:
+    void promoteIfNeeded(const Position& pos);
+
     std::shared_ptr<IBoard> board_;
     std::vector<PendingMove> pendingMoves_;
     int currentTimeMs_ = 0;

@@ -47,4 +47,8 @@ bool Position::operator!=(const Position& other) const {
     return !(*this == other);
 }
 
+bool Position::operator<(const Position& other) const {
+    return row_ != other.row_ ? row_ < other.row_ : col_ < other.col_;
+}
+
 }  // namespace kungfu
