@@ -69,7 +69,7 @@ std::string AssetManager::folderName(PieceType type, PlayerColor color) {
 SpriteSequence AssetManager::loadSequence(const std::string& pieceFolder, const std::string& stateName,
                                            int width, int height) {
     SpriteSequence seq;
-    const std::string stateDir = "UI/assets/pieces1/" + pieceFolder + "/states/" + stateName;
+    const std::string stateDir = "UI/assets/pieces_classic/" + pieceFolder + "/states/" + stateName;
 
     const std::string configJson = readFile(stateDir + "/config.json");
     seq.framesPerSec = std::max(1.0, extractNumberField(configJson, "frames_per_sec"));

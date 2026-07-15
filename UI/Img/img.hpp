@@ -23,10 +23,11 @@ public:
               int interpolation = cv::INTER_AREA);
 
     /**
-     * Convert to BGRA (if needed) and make every near-white pixel fully
-     * transparent. The piece sprite assets are plain RGB with the
-     * background baked in as white pixels rather than a real alpha
-     * channel, so this is how their background gets removed.
+     * For images with no real alpha channel (plain RGB, background baked in
+     * as white pixels): convert to BGRA and make every near-white pixel
+     * fully transparent. A no-op for images that already have a real alpha
+     * channel (e.g. a properly authored transparent PNG) - their existing
+     * transparency is trusted as-is rather than overwritten by a guess.
      *
      * @param threshold Minimum B/G/R value (0-255) for a pixel to count as
      *                   "white" and be keyed out.

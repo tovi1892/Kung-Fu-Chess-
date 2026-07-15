@@ -53,12 +53,14 @@ Img& Img::keyOutNearWhite(int threshold) {
         return *this;
     }
 
-    if (img.channels() == 3) {
-        cv::cvtColor(img, img, cv::COLOR_BGR2BGRA);
+    if (img.channels() == 4) {
+        return *this;  // already has real alpha - trust it, don't guess
     }
-    if (img.channels() != 4) {
+    if (img.channels() != 3) {
         return *this;  // grayscale or unexpected format - nothing sensible to key out
     }
+
+    cv::cvtColor(img, img, cv::COLOR_BGR2BGRA);
 
     for (int y = 0; y < img.rows; ++y) {
         auto* row = img.ptr<cv::Vec4b>(y);
@@ -77,17 +79,8 @@ void Img::draw_on(Img& other_img, int x, int y) const {
         throw std::runtime_error("Both images must be loaded before drawing.");
     }
 
-    // Handle different channel counts
-    cv::Mat source_img = img;
-    cv::Mat target_img = other_img.img;
-    
-    if (source_img.channels() != target_img.channels()) {
-        if (source_img.channels() == 3 && target_img.channels() == 4) {
-            cv::cvtColor(source_img, source_img, cv::COLOR_BGR2BGRA);
-        } else if (source_img.channels() == 4 && target_img.channels() == 3) {
-            cv::cvtColor(source_img, source_img, cv::COLOR_BGRA2BGR);
-        }
-    }
+    const cv::Mat& source_img = img;
+    cv::Mat& target_img = other_img.img;
 
     int h = source_img.rows;
     int w = source_img.cols;
@@ -101,7 +94,9 @@ void Img::draw_on(Img& other_img, int x, int y) const {
     cv::Mat roi = target_img(cv::Rect(x, y, w, h));
 
     if (source_img.channels() == 4) {
-        // Handle alpha blending for BGRA images (per-pixel, not per-matrix-column)
+        // Alpha-blend regardless of the target's channel count - a source
+        // with real transparency must never be flattened before blending,
+        // or its background stops being transparent.
         std::vector<cv::Mat> srcChannels;
         cv::split(source_img, srcChannels);
 
@@ -111,7 +106,8 @@ void Img::draw_on(Img& other_img, int x, int y) const {
         std::vector<cv::Mat> dstChannels;
         cv::split(roi, dstChannels);
 
-        for (int c = 0; c < 3; ++c) {
+        const int blendChannels = std::min<size_t>(3, dstChannels.size());
+        for (int c = 0; c < blendChannels; ++c) {
             cv::Mat srcF, dstF, blended;
             srcChannels[c].convertTo(srcF, CV_32F);
             dstChannels[c].convertTo(dstF, CV_32F);
@@ -120,9 +116,18 @@ void Img::draw_on(Img& other_img, int x, int y) const {
         }
 
         cv::merge(dstChannels, roi);
-    } else {
-        // Direct copy for BGR images
+    } else if (source_img.channels() == target_img.channels()) {
         source_img.copyTo(roi);
+    } else {
+        // A source with no alpha of its own, but a differing channel count
+        // from the target - just reformat and copy (nothing to blend).
+        cv::Mat converted;
+        if (source_img.channels() == 3 && target_img.channels() == 4) {
+            cv::cvtColor(source_img, converted, cv::COLOR_BGR2BGRA);
+        } else {
+            cv::cvtColor(source_img, converted, cv::COLOR_BGRA2BGR);
+        }
+        converted.copyTo(roi);
     }
 }
 
