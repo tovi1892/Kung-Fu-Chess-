@@ -14,6 +14,7 @@ RealTimeArbiter::RealTimeArbiter(std::shared_ptr<IBoard> board,
       ruleEngine_(std::move(ruleEngine)),
       msPerCell_(static_cast<int>(GameConfig::kMsPerCell / speedMultiplier)),
       cooldownMs_(static_cast<int>(GameConfig::kBaseCooldownMs / speedMultiplier)),
+      airborneMs_(static_cast<int>(GameConfig::kBaseAirborneMs / speedMultiplier)),
       currentTimeMs_(0),
       kingCaptured_(false) {}
 
@@ -63,6 +64,44 @@ void RealTimeArbiter::startMove(const Position& from, const Position& to, uintpt
 
 void RealTimeArbiter::setPremove(uintptr_t pieceId, const Position& to) {
     premoves_[pieceId] = to;
+}
+
+void RealTimeArbiter::beginAirborne(uintptr_t pieceId) {
+    airborneEntries_.push_back({pieceId, currentTimeMs_ + airborneMs_});
+}
+
+void RealTimeArbiter::resolveAirborneCounterKill(PendingMove& pm, Piece* attacker, Piece* airbornePiece) {
+    const bool attackerWasKing = (attacker->type() == PieceType::King);
+    board_->removePiece(pm.currentPos);
+    pm.active = false;
+    airbornePiece->setState(PieceState::Idle);
+    if (attackerWasKing) {
+        kingCaptured_ = true;
+    }
+}
+
+void RealTimeArbiter::resolveAirborneExpirations() {
+    for (auto it = airborneEntries_.begin(); it != airborneEntries_.end();) {
+        if (it->endTimeMs != currentTimeMs_) {
+            ++it;
+            continue;
+        }
+
+        const uintptr_t pieceId = it->pieceId;
+        it = airborneEntries_.erase(it);
+
+        Piece* piece = nullptr;
+        for (Piece* candidate : board_->pieces()) {
+            if (candidate && static_cast<uintptr_t>(candidate->id()) == pieceId) {
+                piece = candidate;
+                break;
+            }
+        }
+        if (!piece || piece->state() != PieceState::Airborne) {
+            continue;  // already landed some other way (e.g. counter-kill)
+        }
+        piece->setState(PieceState::Idle);
+    }
 }
 
 void RealTimeArbiter::resolveCooldownExpirations() {
@@ -142,6 +181,14 @@ void RealTimeArbiter::advanceTime(int ms) {
                         continue;
                     }
 
+                    if (target->state() == PieceState::Airborne) {
+                        resolveAirborneCounterKill(pm, currentPiece, target);
+                        if (kingCaptured_) {
+                            return;
+                        }
+                        continue;
+                    }
+
                     const bool capturedKing = (target->type() == PieceType::King);
                     board_->removePiece(pm.to);
                     board_->movePiece(pm.currentPos, pm.to);
@@ -211,6 +258,16 @@ void RealTimeArbiter::advanceTime(int ms) {
                             pm.active = false;
                             continue;
                         } else {
+                            if (target->state() == PieceState::Airborne) {
+                                // חוק הקפיצה: הכלי המרחף חסין - הוא נוחת ומחסל
+                                // את התוקף, במקום להיתפס כמו כלי סטטי רגיל.
+                                resolveAirborneCounterKill(pm, currentPiece, target);
+                                if (kingCaptured_) {
+                                    return;
+                                }
+                                continue;
+                            }
+
                             // הכאה של אויב סטטי - עוצרת את הגלישה כאן, בדיוק כמו בשחמט רגיל
                             bool capturedKing = (target->type() == PieceType::King);
 
@@ -259,6 +316,7 @@ void RealTimeArbiter::advanceTime(int ms) {
             pendingMoves_.end());
 
         resolveCooldownExpirations();
+        resolveAirborneExpirations();
 
         if (kingCaptured_) return;
     }

@@ -49,6 +49,13 @@ public:
     // exactly how a deliberately-illegal request cancels a premove.
     void setPremove(uintptr_t pieceId, const Position& to);
 
+    // Starts the airborne timer for a piece GameEngine::tryJump just put into
+    // PieceState::Airborne. Once the timer expires it lands back to Idle on
+    // its own (see resolveAirborneExpirations); if an enemy's real-time move
+    // reaches its square first, advanceTime resolves the counter-kill instead
+    // (the jumper survives and lands, the attacker is the one removed).
+    void beginAirborne(uintptr_t pieceId);
+
     // Return a snapshot copy of pending moves for external inspection
     std::vector<PendingMove> snapshotPendingMoves() const;
 
@@ -57,6 +64,7 @@ public:
     bool hasActiveMoves() const { return !pendingMoves_.empty(); }
     int msPerCell() const { return msPerCell_; }
     int cooldownMs() const { return cooldownMs_; }
+    int airborneMs() const { return airborneMs_; }
 
 private:
     struct CooldownEntry {
@@ -64,16 +72,28 @@ private:
         int endTimeMs;
     };
 
+    struct AirborneEntry {
+        uintptr_t pieceId;
+        int endTimeMs;
+    };
+
     void promoteIfNeeded(const Position& pos);
     void beginCooldown(Piece* piece);
     void resolveCooldownExpirations();
+    void resolveAirborneExpirations();
+    // An enemy's real-time move stepped onto a square held by an airborne
+    // piece: the jumper is immune, so it lands (back to Idle) and the
+    // attacker is removed instead of the usual capture-and-advance.
+    void resolveAirborneCounterKill(PendingMove& pm, Piece* attacker, Piece* airbornePiece);
 
     std::shared_ptr<IBoard> board_;
     std::shared_ptr<IRuleEngine> ruleEngine_;
     int msPerCell_;
     int cooldownMs_;
+    int airborneMs_;
     std::vector<PendingMove> pendingMoves_;
     std::vector<CooldownEntry> cooldowns_;
+    std::vector<AirborneEntry> airborneEntries_;
     std::unordered_map<uintptr_t, Position> premoves_;
     int currentTimeMs_ = 0;
     bool kingCaptured_ = false;

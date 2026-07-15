@@ -49,8 +49,17 @@ public:
     MoveResult requestMove(const Position& from, const Position& to);
     bool requestJump(const Position& pos);
 
-    // Experimental "jump" mechanic (PieceState::Airborne) — kept as-is; not
-    // part of the graded common/extra route.
+    // Experimental "jump" mechanic (PieceState::Airborne) — not part of the
+    // graded common/extra route. tryJump is the real entry point used during
+    // play (Controller re-clicking the same cell): it starts an airborne
+    // timer in RealTimeArbiter (GameConfig::kBaseAirborneMs, scaled by
+    // speedMultiplier like cooldown) that lands the piece back to Idle on its
+    // own, and RealTimeArbiter::advanceTime resolves the counter-kill in
+    // real time if an enemy's move reaches the airborne square first (the
+    // jumper survives, the attacker is removed instead of the usual
+    // capture). resolveJump/handleArrivalAtAirbornCell below remain as
+    // direct manual hooks (used by unit tests) but are no longer the path
+    // real gameplay takes to land a jump or resolve a landing collision.
     bool tryJump(const Position& cell);
     void resolveJump(const Position& cell);
     bool handleArrivalAtAirbornCell(const Position& cell, const Position& arrivingFrom);

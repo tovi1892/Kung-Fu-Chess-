@@ -15,6 +15,13 @@ struct GameConfig {
     // again. Scales with RealTimeArbiter's speedMultiplier, same as kMsPerCell.
     static constexpr int kBaseCooldownMs = 1000;
 
+    // How long a piece stays airborne after jumping (experimental "jump"
+    // mechanic) before landing back to Idle on its own. Scales with
+    // RealTimeArbiter's speedMultiplier, same as kBaseCooldownMs. Chosen to
+    // comfortably cover a knight's fixed 2-cell (2 * kMsPerCell) approach, so
+    // a jump can dodge a knight attack and not just adjacent sliding pieces.
+    static constexpr int kBaseAirborneMs = 2000;
+
     // Pawn start rows (the row a pawn sits on at game start).
     static constexpr int kWhitePawnStartRow = 1;
     static constexpr int kBlackPawnStartRow = 6;

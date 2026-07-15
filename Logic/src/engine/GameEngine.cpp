@@ -45,6 +45,10 @@ MoveResult GameEngine::requestMove(const Position& from, const Position& to) {
         return {false, "piece_already_moving"};
     }
 
+    if (movingPiece->state() == PieceState::Airborne) {
+        return {false, "piece_airborne"};
+    }
+
     if (movingPiece->state() == PieceState::Cooldown) {
         // Queued unvalidated: this is also how submitting a deliberately
         // illegal request cancels a previously queued premove (it overwrites
@@ -170,11 +174,13 @@ bool GameEngine::tryJump(const Position& cell) {
     const PieceState pieceState = piece.value()->state();
     if (pieceState == PieceState::Moving ||
         pieceState == PieceState::Airborne ||
+        pieceState == PieceState::Cooldown ||
         pieceState == PieceState::Captured) {
         return false;
     }
 
     piece.value()->setState(PieceState::Airborne);
+    arbiter_->beginAirborne(static_cast<uintptr_t>(piece.value()->id()));
     return true;
 }
 
