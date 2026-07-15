@@ -11,10 +11,43 @@ OpenCvView::OpenCvView(int width, int height)
       mapper_(width, height, GameConfig::kBoardSize, GameConfig::kBoardSize) {}
 
 void OpenCvView::init() {
-    boardImg_.read("UI/assets/board.png", {width_, height_}, true, cv::INTER_LINEAR);
+    drawBoard();
 
     cv::namedWindow(windowName_, cv::WINDOW_AUTOSIZE);
     cv::setMouseCallback(windowName_, &OpenCvView::onMouse, this);
+}
+
+void OpenCvView::drawBoard() {
+    const int margin = mapper_.margin();
+    const int rows = GameConfig::kBoardSize;
+    const int cols = GameConfig::kBoardSize;
+
+    boardImg_.create(width_, height_, cv::Scalar(235, 235, 235));
+
+    static const cv::Scalar kLightSquare(181, 217, 240);
+    static const cv::Scalar kDarkSquare(99, 136, 181);
+    for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+            const bool isLight = (r + c) % 2 == 0;
+            boardImg_.draw_rect(mapper_.cellTopLeftX(c), mapper_.cellTopLeftY(r),
+                                 mapper_.cellWidth(), mapper_.cellHeight(),
+                                 isLight ? kLightSquare : kDarkSquare);
+        }
+    }
+
+    static const cv::Scalar kLabelColor(60, 60, 60);
+    for (int c = 0; c < cols; ++c) {
+        const std::string label(1, static_cast<char>('a' + c));
+        const int x = mapper_.cellTopLeftX(c) + mapper_.cellWidth() / 2 - 5;
+        boardImg_.put_text(label, x, margin - 12, 0.5, kLabelColor, 1);
+        boardImg_.put_text(label, x, height_ - margin + 24, 0.5, kLabelColor, 1);
+    }
+    for (int r = 0; r < rows; ++r) {
+        const std::string label = std::to_string(rows - r);
+        const int y = mapper_.cellTopLeftY(r) + mapper_.cellHeight() / 2 + 5;
+        boardImg_.put_text(label, margin / 2 - 5, y, 0.5, kLabelColor, 1);
+        boardImg_.put_text(label, width_ - margin / 2 - 5, y, 0.5, kLabelColor, 1);
+    }
 }
 
 void OpenCvView::render(const std::vector<RenderPiece>& pieces) {
@@ -26,10 +59,17 @@ void OpenCvView::render(const std::vector<RenderPiece>& pieces) {
         const int px = mapper_.cellTopLeftX(col);
         const int py = mapper_.cellTopLeftY(row);
 
-        auto& sprite = assets_.getPieceSprite(static_cast<PieceType>(rp.type),
-                                               static_cast<PlayerColor>(rp.color),
-                                               mapper_.cellWidth(), mapper_.cellHeight());
-        sprite.draw_on(frame, px, py);
+        const auto& animations = assets_.getAnimations(static_cast<PieceType>(rp.type),
+                                                         static_cast<PlayerColor>(rp.color),
+                                                         mapper_.cellWidth(), mapper_.cellHeight());
+        const auto pieceState = static_cast<PieceState>(rp.state);
+        const auto& sequence = animations.forState(pieceState);
+        if (sequence.frames.empty()) {
+            continue;
+        }
+
+        const int frameIndex = animator_.frameIndexFor(rp.id, pieceState, sequence);
+        sequence.frames[frameIndex].draw_on(frame, px, py);
 
         if (rp.cooldownMs > 0) {
             std::ostringstream ss;

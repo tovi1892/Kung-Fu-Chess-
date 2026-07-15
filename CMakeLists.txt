@@ -35,8 +35,7 @@ endif()
 # while still including all .cpp files under the expected source dirs.
 file(GLOB_RECURSE ENGINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/Logic/src/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/UI/Img/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/UI/UI_OpenCV/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/UI/*.cpp"
 )
 
 add_library(kungfu_engine STATIC ${ENGINE_SOURCES})

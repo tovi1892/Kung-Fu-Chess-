@@ -35,7 +35,44 @@ Img& Img::read(const std::string& path,
     return *this;
 }
 
-void Img::draw_on(Img& other_img, int x, int y) {
+Img& Img::create(int width, int height, const cv::Scalar& color) {
+    img = cv::Mat(height, width, CV_8UC3, color);
+    return *this;
+}
+
+Img& Img::draw_rect(int x, int y, int w, int h, const cv::Scalar& color) {
+    if (img.empty()) {
+        throw std::runtime_error("Image not loaded.");
+    }
+    cv::rectangle(img, cv::Rect(x, y, w, h), color, cv::FILLED);
+    return *this;
+}
+
+Img& Img::keyOutNearWhite(int threshold) {
+    if (img.empty()) {
+        return *this;
+    }
+
+    if (img.channels() == 3) {
+        cv::cvtColor(img, img, cv::COLOR_BGR2BGRA);
+    }
+    if (img.channels() != 4) {
+        return *this;  // grayscale or unexpected format - nothing sensible to key out
+    }
+
+    for (int y = 0; y < img.rows; ++y) {
+        auto* row = img.ptr<cv::Vec4b>(y);
+        for (int x = 0; x < img.cols; ++x) {
+            cv::Vec4b& px = row[x];
+            const bool isNearWhite = px[0] >= threshold && px[1] >= threshold && px[2] >= threshold;
+            px[3] = isNearWhite ? 0 : 255;
+        }
+    }
+
+    return *this;
+}
+
+void Img::draw_on(Img& other_img, int x, int y) const {
     if (img.empty() || other_img.img.empty()) {
         throw std::runtime_error("Both images must be loaded before drawing.");
     }

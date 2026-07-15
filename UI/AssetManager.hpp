@@ -2,44 +2,47 @@
 
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "Img/img.hpp"
 #include "model/Enums.hpp"
 
 namespace kungfu {
 
-// Loads and caches the idle sprite for each piece type/color from disk.
+// One playable animation: an ordered list of frames plus how fast/whether to
+// loop through them, taken straight from the asset's states/<name>/config.json.
+struct SpriteSequence {
+    std::vector<Img> frames;
+    double framesPerSec = 1.0;
+    bool isLoop = true;
+};
+
+// Every animation state available for one piece type+color.
+struct PieceAnimationSet {
+    SpriteSequence idle;
+    SpriteSequence move;
+    SpriteSequence jump;
+    SpriteSequence longRest;
+    // Present in the assets but not currently reachable: the engine's
+    // Airborne("jump")/PieceState never transitions into a cooldown, so
+    // nothing maps to short_rest today.
+    SpriteSequence shortRest;
+
+    const SpriteSequence& forState(PieceState state) const;
+};
+
+// Loads and caches every piece's per-state sprite animations from disk.
 class AssetManager {
 public:
-    Img& getPieceSprite(PieceType type, PlayerColor color, int width, int height) {
-        const std::string key = folderName(type, color);
-        auto it = cache_.find(key);
-        if (it != cache_.end()) {
-            return it->second;
-        }
-
-        Img sprite;
-        sprite.read("UI/assets/pieces1/" + key + "/states/idle/sprites/1.png", {width, height}, true);
-        return cache_.emplace(key, std::move(sprite)).first->second;
-    }
+    const PieceAnimationSet& getAnimations(PieceType type, PlayerColor color, int width, int height);
 
 private:
     // Asset folders are named <Kind><Color>, e.g. "PW" for white pawn, "KB" for black king.
-    static std::string folderName(PieceType type, PlayerColor color) {
-        char kind = '?';
-        switch (type) {
-            case PieceType::King:   kind = 'K'; break;
-            case PieceType::Queen:  kind = 'Q'; break;
-            case PieceType::Rook:   kind = 'R'; break;
-            case PieceType::Bishop: kind = 'B'; break;
-            case PieceType::Knight: kind = 'N'; break;
-            case PieceType::Pawn:   kind = 'P'; break;
-        }
-        const char colorCh = (color == PlayerColor::White) ? 'W' : 'B';
-        return std::string(1, kind) + std::string(1, colorCh);
-    }
+    static std::string folderName(PieceType type, PlayerColor color);
+    static SpriteSequence loadSequence(const std::string& pieceFolder, const std::string& stateName,
+                                        int width, int height);
 
-    std::unordered_map<std::string, Img> cache_;
+    std::unordered_map<std::string, PieceAnimationSet> cache_;
 };
 
 }  // namespace kungfu

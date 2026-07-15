@@ -21,7 +21,30 @@ public:
               const std::pair<int, int>& size = {},
               bool keep_aspect = false,
               int interpolation = cv::INTER_AREA);
-    
+
+    /**
+     * Convert to BGRA (if needed) and make every near-white pixel fully
+     * transparent. The piece sprite assets are plain RGB with the
+     * background baked in as white pixels rather than a real alpha
+     * channel, so this is how their background gets removed.
+     *
+     * @param threshold Minimum B/G/R value (0-255) for a pixel to count as
+     *                   "white" and be keyed out.
+     */
+    Img& keyOutNearWhite(int threshold = 240);
+
+    /**
+     * Replace this image with a blank canvas of the given size and color
+     * (BGR). Used to build a board rendered entirely from code instead of a
+     * background image file.
+     */
+    Img& create(int width, int height, const cv::Scalar& color = cv::Scalar(255, 255, 255));
+
+    /**
+     * Draw a filled rectangle directly onto this image.
+     */
+    Img& draw_rect(int x, int y, int w, int h, const cv::Scalar& color);
+
     /**
      * Draw this image onto another image at position (x, y)
      * 
@@ -29,7 +52,7 @@ public:
      * @param x X coordinate for top-left corner
      * @param y Y coordinate for top-left corner
      */
-    void draw_on(Img& other_img, int x, int y);
+    void draw_on(Img& other_img, int x, int y) const;
     
     /**
      * Put text on the image
