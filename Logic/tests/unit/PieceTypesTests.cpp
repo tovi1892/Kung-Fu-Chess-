@@ -1,10 +1,10 @@
 #include <catch2/catch.hpp>
-#include "pieces/King.hpp"
-#include "pieces/Queen.hpp"
-#include "pieces/Rook.hpp"
-#include "pieces/Bishop.hpp"
-#include "pieces/Knight.hpp"
-#include "pieces/Pawn.hpp"
+#include "model/pieces/King.hpp"
+#include "model/pieces/Queen.hpp"
+#include "model/pieces/Rook.hpp"
+#include "model/pieces/Bishop.hpp"
+#include "model/pieces/Knight.hpp"
+#include "model/pieces/Pawn.hpp"
 
 TEST_CASE("Piece type identification", "[piece_types]") {
     kungfu::King king(kungfu::PlayerColor::White, kungfu::Position(0, 0));

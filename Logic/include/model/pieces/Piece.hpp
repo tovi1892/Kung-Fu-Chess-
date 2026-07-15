@@ -1,8 +1,8 @@
 #pragma once
 
 #include <memory>
-#include "common/Enums.hpp"
-#include "common/Position.hpp"
+#include "model/Enums.hpp"
+#include "model/Position.hpp"
 
 namespace kungfu {
 
@@ -10,6 +10,11 @@ class Piece {
 public:
     Piece(PieceType type, PlayerColor color, Position position);
     virtual ~Piece() = default;
+
+    // Stable id assigned once at creation time (course spec section 6: "id: unique
+    // stable id"). Used to correlate a piece across board snapshots and in-flight
+    // motions without relying on its (potentially-moving) memory address.
+    int id() const;
 
     PieceType type() const;
     PlayerColor color() const;
@@ -25,6 +30,7 @@ public:
     virtual bool isMoveValid(const Position& from, const Position& to) const = 0;
 
 protected:
+    int id_;
     PieceType type_;
     PlayerColor color_;
     Position position_;

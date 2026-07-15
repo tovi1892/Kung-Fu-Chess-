@@ -142,4 +142,12 @@ bool GameController::isPositionInBounds(const Position& pos) const {
     return game_ ? game_->isPositionInBounds(pos) : false;
 }
 
+int GameController::boardRows() const {
+    return game_ ? game_->boardRows() : 0;
+}
+
+int GameController::boardCols() const {
+    return game_ ? game_->boardCols() : 0;
+}
+
 }  // namespace kungfu

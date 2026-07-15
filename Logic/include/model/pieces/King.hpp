@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pieces/Piece.hpp"
+#include "model/pieces/Piece.hpp"
 
 namespace kungfu {
 

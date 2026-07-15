@@ -1,6 +1,6 @@
 #include <catch2/catch.hpp>
-#include "board/Board.hpp"
-#include "pieces/King.hpp"
+#include "model/Board.hpp"
+#include "model/pieces/King.hpp"
 #include "rules/RuleEngine.hpp"
 
 TEST_CASE("Rule engine validation", "[rules]") {

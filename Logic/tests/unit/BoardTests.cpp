@@ -1,7 +1,7 @@
 #include <catch2/catch.hpp>
 #include <memory>
-#include "board/Board.hpp"
-#include "pieces/King.hpp"
+#include "model/Board.hpp"
+#include "model/pieces/King.hpp"
 
 TEST_CASE("Board operations - basic piece management", "[board]") {
     kungfu::Board board;

@@ -1,4 +1,4 @@
-#include "pieces/King.hpp"
+#include "model/pieces/King.hpp"
 
 #include <cmath>
 #include <utility>

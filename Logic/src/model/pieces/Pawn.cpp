@@ -1,6 +1,6 @@
-#include "pieces/Pawn.hpp"
+#include "model/pieces/Pawn.hpp"
 
-#include "common/GameConfig.hpp"
+#include "model/GameConfig.hpp"
 #include <cmath>
 #include <utility>
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/Position.hpp"
+#include "model/Position.hpp"
 
 namespace kungfu {
 

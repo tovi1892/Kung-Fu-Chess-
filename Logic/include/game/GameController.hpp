@@ -3,7 +3,7 @@
 #include <memory>
 #include <optional>
 
-#include "common/Position.hpp"
+#include "model/Position.hpp"
 #include "game/Game.hpp"
 #include "game/IGameInputAdapter.hpp"
 
@@ -27,6 +27,8 @@ public:
     bool hasSelection() const override;
     std::optional<Position> selectedPosition() const override;
     bool isPositionInBounds(const Position& pos) const override;
+    int boardRows() const override;
+    int boardCols() const override;
 
 private:
     std::shared_ptr<Game> game_;

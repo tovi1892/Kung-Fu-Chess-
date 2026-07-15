@@ -4,13 +4,13 @@
 
 // כולל את כל המחלקות הדרושות
 #include "game/Game.hpp"
-#include "board/Board.hpp"
+#include "model/Board.hpp"
 #include "rules/RuleEngine.hpp"
 #include "game/IGameInputAdapter.hpp"
-#include "pieces/Pawn.hpp"
-#include "pieces/Knight.hpp"
-#include "pieces/Rook.hpp"
-#include "pieces/Queen.hpp"
+#include "model/pieces/Pawn.hpp"
+#include "model/pieces/Knight.hpp"
+#include "model/pieces/Rook.hpp"
+#include "model/pieces/Queen.hpp"
 
 namespace kungfu {
     class DummyInputAdapter : public IGameInputAdapter {

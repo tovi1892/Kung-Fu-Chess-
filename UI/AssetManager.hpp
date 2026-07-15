@@ -4,7 +4,7 @@
 #include <unordered_map>
 
 #include "Img/img.hpp"
-#include "common/Enums.hpp"
+#include "model/Enums.hpp"
 
 namespace kungfu {
 

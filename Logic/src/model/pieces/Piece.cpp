@@ -1,9 +1,19 @@
-#include "pieces/Piece.hpp"
+#include "model/pieces/Piece.hpp"
+
+#include <atomic>
 
 namespace kungfu {
 
+namespace {
+std::atomic<int> nextPieceId{1};
+}
+
 Piece::Piece(PieceType type, PlayerColor color, Position position)
-    : type_(type), color_(color), position_(position), state_(PieceState::Idle) {}
+    : id_(nextPieceId++), type_(type), color_(color), position_(position), state_(PieceState::Idle) {}
+
+int Piece::id() const {
+    return id_;
+}
 
 PieceType Piece::type() const {
     return type_;

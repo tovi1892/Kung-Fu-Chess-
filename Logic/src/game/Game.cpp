@@ -5,10 +5,10 @@
 #include <utility> 
 #include <memory>
 
-#include "board/Board.hpp"
+#include "model/Board.hpp"
 #include "IGameView.hpp"
-#include "common/GameConfig.hpp"
-#include "pieces/Queen.hpp"
+#include "model/GameConfig.hpp"
+#include "model/pieces/Queen.hpp"
 #include "rules/RuleEngine.hpp"
 #include "game/RealTimeArbiter.hpp"
 #include <unordered_map>
@@ -99,14 +99,14 @@ bool Game::requestMove(const Position& from, const Position& to) {
         to,
         from,
         startTime,
-        startTime + (distance * 1000),
-        startTime + 1000,
+        startTime + (distance * GameConfig::kMsPerCell),
+        startTime + GameConfig::kMsPerCell,
         rStep,
         cStep,
         true
     };
     // attach piece id so Arbiter and UI can correlate pending moves to pieces
-    pm.pieceId = reinterpret_cast<uintptr_t>(movingPiece);
+    pm.pieceId = static_cast<uintptr_t>(movingPiece->id());
 
     arbiter_->addMove(pm);
     movingPiece->setState(PieceState::Moving);
@@ -132,10 +132,15 @@ bool Game::isFriendlyPieceAt(const Position& pos) const {
 }
 
 bool Game::isPositionInBounds(const Position& pos) const {
-    auto concreteBoard = std::dynamic_pointer_cast<Board>(board_);
-    int maxRows = concreteBoard ? concreteBoard->rows() : GameConfig::kBoardSize;
-    int maxCols = concreteBoard ? concreteBoard->cols() : GameConfig::kBoardSize;
-    return movementSystem_.isInBounds(pos, maxRows, maxCols);
+    return movementSystem_.isInBounds(pos, boardRows(), boardCols());
+}
+
+int Game::boardRows() const {
+    return board_ ? board_->rows() : GameConfig::kBoardSize;
+}
+
+int Game::boardCols() const {
+    return board_ ? board_->cols() : GameConfig::kBoardSize;
 }
 
 void Game::start() {
@@ -236,9 +241,8 @@ void Game::wait(int ms) {
 }
 
 void Game::printBoard(std::ostream& out) const {
-    auto concreteBoard = std::dynamic_pointer_cast<Board>(board_);
-    int maxRows = concreteBoard ? concreteBoard->rows() : GameConfig::kBoardSize;
-    int maxCols = concreteBoard ? concreteBoard->cols() : GameConfig::kBoardSize;
+    int maxRows = boardRows();
+    int maxCols = boardCols();
 
     for (int r = 0; r < maxRows; ++r) {
         for (int c = 0; c < maxCols; ++c) {

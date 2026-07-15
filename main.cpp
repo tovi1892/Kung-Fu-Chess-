@@ -3,8 +3,8 @@
 #include <sstream>
 
 #include "BoardParser.hpp"
-#include "board/Board.hpp"
-#include "common/GameConfig.hpp"
+#include "model/Board.hpp"
+#include "model/GameConfig.hpp"
 #include "game/Game.hpp"
 #include "game/GameController.hpp"
 #include "rules/RuleEngine.hpp"

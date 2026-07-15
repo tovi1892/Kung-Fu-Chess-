@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "board/Board.hpp"
+#include "model/Board.hpp"
 #include "game/Game.hpp"
 
 namespace kungfu {

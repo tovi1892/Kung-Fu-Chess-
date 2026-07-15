@@ -1,4 +1,4 @@
-#include "pieces/Rook.hpp"
+#include "model/pieces/Rook.hpp"
 
 #include <cmath>
 #include <utility>

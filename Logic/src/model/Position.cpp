@@ -1,4 +1,4 @@
-#include "common/Position.hpp"
+#include "model/Position.hpp"
 #include <cmath>
 
 namespace kungfu {

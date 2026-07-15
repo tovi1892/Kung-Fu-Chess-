@@ -1,4 +1,4 @@
-#include "pieces/Bishop.hpp"
+#include "model/pieces/Bishop.hpp"
 
 #include <cmath>
 #include <utility>

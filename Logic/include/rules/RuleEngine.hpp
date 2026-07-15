@@ -1,8 +1,8 @@
 #pragma once
 
 #include <memory>
-#include "board/IBoard.hpp"
-#include "common/Position.hpp"
+#include "model/IBoard.hpp"
+#include "model/Position.hpp"
 #include "movement/MovementSystem.hpp"
 #include "rules/IRuleEngine.hpp"
 

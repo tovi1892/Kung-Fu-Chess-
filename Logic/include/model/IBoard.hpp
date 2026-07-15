@@ -2,14 +2,17 @@
 
 #include <memory>
 #include <optional>
-#include "common/Position.hpp"
-#include "pieces/Piece.hpp"
+#include "model/Position.hpp"
+#include "model/pieces/Piece.hpp"
 
 namespace kungfu {
 
 class IBoard {
 public:
     virtual ~IBoard() = default;
+
+    virtual int rows() const = 0;
+    virtual int cols() const = 0;
 
     virtual std::optional<Piece*> pieceAt(const Position& position) const = 0;
     virtual bool placePiece(std::unique_ptr<Piece> piece, const Position& position) = 0;

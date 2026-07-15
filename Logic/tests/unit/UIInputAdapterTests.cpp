@@ -3,8 +3,8 @@
 #include "game/GameController.hpp"
 #include "game/IGameInputAdapter.hpp"
 #include "game/UIInputAdapter.hpp"
-#include "board/Board.hpp"
-#include "pieces/Rook.hpp"
+#include "model/Board.hpp"
+#include "model/pieces/Rook.hpp"
 
 namespace {
 class MockGame : public kungfu::IGameInputTarget {
@@ -25,6 +25,8 @@ public:
     bool hasSelection() const override { return false; }
     std::optional<kungfu::Position> selectedPosition() const override { return std::nullopt; }
     bool isPositionInBounds(const kungfu::Position& pos) const override { return true; }
+    int boardRows() const override { return 8; }
+    int boardCols() const override { return 8; }
 };
 }
 

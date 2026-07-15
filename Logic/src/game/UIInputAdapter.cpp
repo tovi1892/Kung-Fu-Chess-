@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "model/GameConfig.hpp"
 #include "game/GameController.hpp"
 
 namespace kungfu {
@@ -26,8 +27,8 @@ std::optional<Position> BoardMapper::mapToBoard(int x, int y, int maxRows, int m
         return std::nullopt;
     }
 
-    const int row = clampToBoard(y / 100, maxRows);
-    const int col = clampToBoard(x / 100, maxCols);
+    const int row = clampToBoard(y / GameConfig::kCellSizePx, maxRows);
+    const int col = clampToBoard(x / GameConfig::kCellSizePx, maxCols);
     return Position(row, col);
 }
 
@@ -47,7 +48,7 @@ void UIInputAdapter::handleClick(int x, int y) {
         return;
     }
 
-    const auto pos = boardMapper_.mapToBoard(x, y, 8, 8);
+    const auto pos = boardMapper_.mapToBoard(x, y, game.boardRows(), game.boardCols());
     if (!pos.has_value()) {
         return;
     }

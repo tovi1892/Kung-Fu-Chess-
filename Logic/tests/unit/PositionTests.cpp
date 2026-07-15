@@ -1,5 +1,5 @@
 #include <catch2/catch.hpp>
-#include "common/Position.hpp"
+#include "model/Position.hpp"
 
 TEST_CASE("Position equality and access", "[position]") {
     kungfu::Position p1(2, 3);

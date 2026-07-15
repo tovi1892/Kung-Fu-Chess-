@@ -2,7 +2,7 @@
 
 #include <sstream>
 
-#include "common/GameConfig.hpp"
+#include "model/GameConfig.hpp"
 
 namespace kungfu {
 

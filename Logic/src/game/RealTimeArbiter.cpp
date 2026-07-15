@@ -1,6 +1,7 @@
 #include "game/RealTimeArbiter.hpp"
 #include <iostream>
 #include <algorithm>
+#include "model/GameConfig.hpp"
 
 namespace kungfu {
 
@@ -127,7 +128,7 @@ void RealTimeArbiter::advanceTime(int ms) {
                         movedPiece.value()->setState(PieceState::Idle);
                     }
                 } else {
-                    pm.nextStepTimeMs += 1000;
+                    pm.nextStepTimeMs += GameConfig::kMsPerCell;
                 }
             }
         }

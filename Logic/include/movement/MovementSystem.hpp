@@ -1,8 +1,8 @@
 #pragma once
 
 #include <optional>
-#include "common/Position.hpp"
-#include "pieces/Piece.hpp"
+#include "model/Position.hpp"
+#include "model/pieces/Piece.hpp"
 
 namespace kungfu {
 

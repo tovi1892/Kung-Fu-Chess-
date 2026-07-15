@@ -1,10 +1,10 @@
 #include <catch2/catch.hpp>
 #include "movement/MovementSystem.hpp"
-#include "pieces/Bishop.hpp"
-#include "pieces/King.hpp"
-#include "pieces/Knight.hpp"
-#include "pieces/Pawn.hpp"
-#include "pieces/Rook.hpp"
+#include "model/pieces/Bishop.hpp"
+#include "model/pieces/King.hpp"
+#include "model/pieces/Knight.hpp"
+#include "model/pieces/Pawn.hpp"
+#include "model/pieces/Rook.hpp"
 
 TEST_CASE("Movement rules", "[movement]") {
     kungfu::MovementSystem movement;

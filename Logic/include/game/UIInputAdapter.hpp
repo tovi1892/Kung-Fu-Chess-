@@ -4,7 +4,7 @@
 #include <memory>
 #include <optional>
 
-#include "common/Position.hpp"
+#include "model/Position.hpp"
 #include "game/IGameInputAdapter.hpp"
 
 namespace kungfu {

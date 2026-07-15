@@ -1,13 +1,13 @@
 #include "rules/RuleEngine.hpp"
-#include "common/GameConfig.hpp"
+#include "model/GameConfig.hpp"
 #include <cmath>
 
 namespace kungfu {
 namespace {
 
-bool isOutsideBoard(const Position& position) {
-    return position.row() < 0 || position.row() >= GameConfig::kBoardSize ||
-           position.col() < 0 || position.col() >= GameConfig::kBoardSize;
+bool isOutsideBoard(const Position& position, int rows, int cols) {
+    return position.row() < 0 || position.row() >= rows ||
+           position.col() < 0 || position.col() >= cols;
 }
 
 }  // namespace
@@ -19,7 +19,8 @@ MoveValidation RuleEngine::validateMove(const Position& from, const Position& to
         return {false, "illegal_piece_move"};
     }
 
-    if (isOutsideBoard(from) || isOutsideBoard(to)) {
+    if (isOutsideBoard(from, board_->rows(), board_->cols()) ||
+        isOutsideBoard(to, board_->rows(), board_->cols())) {
         return {false, "outside_board"};
     }
 

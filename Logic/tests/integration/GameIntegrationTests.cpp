@@ -1,10 +1,10 @@
 #include <cassert>
 #include <memory>
 
-#include "board/Board.hpp"
+#include "model/Board.hpp"
 #include "game/Game.hpp"
 #include "game/UIInputAdapter.hpp"
-#include "pieces/Rook.hpp"
+#include "model/pieces/Rook.hpp"
 
 int main() {
     auto board = std::make_shared<kungfu::Board>();

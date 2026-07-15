@@ -1,8 +1,8 @@
 #include <catch2/catch.hpp>
-#include "board/Board.hpp"
+#include "model/Board.hpp"
 #include "game/Game.hpp"
-#include "pieces/King.hpp"
-#include "pieces/Rook.hpp"
+#include "model/pieces/King.hpp"
+#include "model/pieces/Rook.hpp"
 #include "TestHelpers.hpp"
 
 TEST_CASE("Game state and logic flow", "[game]") {

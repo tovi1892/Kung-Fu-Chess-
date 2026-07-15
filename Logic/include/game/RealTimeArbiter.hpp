@@ -3,9 +3,9 @@
 #include <memory>
 #include <vector>
 #include <algorithm>
-#include "board/IBoard.hpp"
-#include "common/Position.hpp"
-#include "pieces/Piece.hpp"
+#include "model/IBoard.hpp"
+#include "model/Position.hpp"
+#include "model/pieces/Piece.hpp"
 
 namespace kungfu {
 

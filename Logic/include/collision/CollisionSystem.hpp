@@ -2,10 +2,10 @@
 
 #include <memory>
 #include <optional>
-#include "board/IBoard.hpp"
+#include "model/IBoard.hpp"
 #include "collision/ICollisionSystem.hpp"
-#include "common/Position.hpp"
-#include "pieces/Piece.hpp"
+#include "model/Position.hpp"
+#include "model/pieces/Piece.hpp"
 
 namespace kungfu {
 

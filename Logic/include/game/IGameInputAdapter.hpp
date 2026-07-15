@@ -3,7 +3,7 @@
 #include <memory>
 #include <optional>
 
-#include "common/Position.hpp"
+#include "model/Position.hpp"
 
 namespace kungfu {
 
@@ -34,6 +34,8 @@ public:
     virtual bool hasSelection() const = 0;
     virtual std::optional<Position> selectedPosition() const = 0;
     virtual bool isPositionInBounds(const Position& pos) const = 0;
+    virtual int boardRows() const = 0;
+    virtual int boardCols() const = 0;
 };
 
 class IGameInputAdapter {

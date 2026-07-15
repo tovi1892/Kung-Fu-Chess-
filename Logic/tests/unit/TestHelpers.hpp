@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "board/Board.hpp"
+#include "model/Board.hpp"
 #include "game/Game.hpp"
 #include "game/UIInputAdapter.hpp"
 

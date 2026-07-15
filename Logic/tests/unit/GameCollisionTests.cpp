@@ -2,15 +2,15 @@
 #include <memory>
 #include <vector>
 #include "game/Game.hpp"
-#include "board/Board.hpp"
-#include "common/Position.hpp"
-#include "pieces/Rook.hpp"
-#include "pieces/Knight.hpp"
-#include "pieces/King.hpp"
-#include "pieces/Pawn.hpp"
-#include "pieces/Queen.hpp"
-#include "pieces/Bishop.hpp"
-#include "pieces/Piece.hpp"
+#include "model/Board.hpp"
+#include "model/Position.hpp"
+#include "model/pieces/Rook.hpp"
+#include "model/pieces/Knight.hpp"
+#include "model/pieces/King.hpp"
+#include "model/pieces/Pawn.hpp"
+#include "model/pieces/Queen.hpp"
+#include "model/pieces/Bishop.hpp"
+#include "model/pieces/Piece.hpp"
 
 using namespace kungfu;
 

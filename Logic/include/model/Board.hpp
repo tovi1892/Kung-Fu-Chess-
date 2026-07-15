@@ -2,10 +2,10 @@
 
 #include <memory>
 #include <vector>
-#include "board/IBoard.hpp"
-#include "common/Enums.hpp"
-#include "common/Position.hpp"
-#include "pieces/Piece.hpp"
+#include "model/IBoard.hpp"
+#include "model/Enums.hpp"
+#include "model/Position.hpp"
+#include "model/pieces/Piece.hpp"
 
 // Forward-declare render struct from Core_Interfaces to avoid direct header dependency
 namespace kungfu { struct RenderPiece; }
@@ -17,8 +17,8 @@ public:
     Board();
     Board(int rows, int cols); // בנאי חדש לתמיכה בממדים דינמיים
 
-    int rows() const { return rows_; }
-    int cols() const { return cols_; }
+    int rows() const override { return rows_; }
+    int cols() const override { return cols_; }
 
     std::optional<Piece*> pieceAt(const Position& position) const override;
     bool placePiece(std::unique_ptr<Piece> piece, const Position& position) override;

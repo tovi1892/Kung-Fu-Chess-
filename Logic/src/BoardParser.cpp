@@ -6,12 +6,12 @@
 #include <sstream>
 #include <unordered_map>
 
-#include "pieces/Bishop.hpp"
-#include "pieces/King.hpp"
-#include "pieces/Knight.hpp"
-#include "pieces/Pawn.hpp"
-#include "pieces/Queen.hpp"
-#include "pieces/Rook.hpp"
+#include "model/pieces/Bishop.hpp"
+#include "model/pieces/King.hpp"
+#include "model/pieces/Knight.hpp"
+#include "model/pieces/Pawn.hpp"
+#include "model/pieces/Queen.hpp"
+#include "model/pieces/Rook.hpp"
 #include "game/Game.hpp"
 #include "game/UIInputAdapter.hpp"
 

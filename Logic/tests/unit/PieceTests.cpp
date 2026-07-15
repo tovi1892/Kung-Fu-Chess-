@@ -1,5 +1,5 @@
 #include <catch2/catch.hpp>
-#include "pieces/King.hpp"
+#include "model/pieces/King.hpp"
 
 TEST_CASE("Piece basic properties", "[piece]") {
     kungfu::King piece(kungfu::PlayerColor::White, kungfu::Position(0, 0));

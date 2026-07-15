@@ -1,4 +1,4 @@
-#include "board/Board.hpp"
+#include "model/Board.hpp"
 #include "IGameView.hpp"
 #include <cstdint>
 #include <algorithm>
@@ -103,7 +103,7 @@ std::vector<RenderPiece> Board::getRenderState() const {
     for (const auto& p : pieces_) {
         if (!p) continue;
         RenderPiece rp;
-        rp.id = reinterpret_cast<uintptr_t>(p.get());
+        rp.id = static_cast<uintptr_t>(p->id());
         rp.type = static_cast<int>(p->type());
         rp.color = static_cast<int>(p->color());
         rp.x = p->position().row();

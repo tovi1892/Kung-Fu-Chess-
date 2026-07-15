@@ -4,12 +4,12 @@
 #include <optional>
 #include <iostream>
 #include <vector>
-#include "board/IBoard.hpp"
+#include "model/IBoard.hpp"
 #include "collision/CollisionSystem.hpp"
-#include "common/GameState.hpp"
-#include "common/Position.hpp"
+#include "model/GameState.hpp"
+#include "model/Position.hpp"
 #include "movement/MovementSystem.hpp"
-#include "pieces/Piece.hpp"
+#include "model/pieces/Piece.hpp"
 #include "rules/IRuleEngine.hpp"
 #include "game/IGameInputAdapter.hpp"
 #include "game/RealTimeArbiter.hpp" // הכללת ה-Arbiter החדש
@@ -55,6 +55,8 @@ public:
     std::optional<Position> selectedPosition() const override;
     bool isFriendlyPieceAt(const Position& pos) const override;
     bool isPositionInBounds(const Position& pos) const override;
+    int boardRows() const override;
+    int boardCols() const override;
 
 private:
     std::string getPieceToken(const Piece* piece) const;

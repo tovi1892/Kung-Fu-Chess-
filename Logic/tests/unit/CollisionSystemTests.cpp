@@ -1,8 +1,8 @@
 #include <catch2/catch.hpp>
 #include <memory>
-#include "board/Board.hpp"
+#include "model/Board.hpp"
 #include "collision/CollisionSystem.hpp"
-#include "pieces/King.hpp"
+#include "model/pieces/King.hpp"
 
 TEST_CASE("Collision detection", "[collision]") {
     auto board = std::make_shared<kungfu::Board>();

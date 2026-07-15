@@ -1,8 +1,8 @@
 #pragma once
 
 #include <string>
-#include "common/Enums.hpp"
-#include "common/Position.hpp"
+#include "model/Enums.hpp"
+#include "model/Position.hpp"
 
 namespace kungfu {
 

@@ -1,6 +1,6 @@
 #include "movement/MovementSystem.hpp"
 #include <cmath>
-#include "common/GameConfig.hpp"
+#include "model/GameConfig.hpp"
 
 namespace kungfu {
 

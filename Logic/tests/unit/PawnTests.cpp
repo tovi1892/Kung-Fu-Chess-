@@ -1,7 +1,7 @@
 #include <catch2/catch.hpp>
-#include "board/Board.hpp"
+#include "model/Board.hpp"
 #include "game/Game.hpp"
-#include "pieces/Pawn.hpp"
+#include "model/pieces/Pawn.hpp"
 #include "TestHelpers.hpp"
 
 TEST_CASE("Pawn movement and promotion rules", "[pawn]") {

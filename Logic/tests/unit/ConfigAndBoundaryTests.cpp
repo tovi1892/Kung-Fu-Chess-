@@ -1,5 +1,5 @@
 #include <catch2/catch.hpp>
-#include "common/GameConfig.hpp"
+#include "model/GameConfig.hpp"
 #include "movement/MovementSystem.hpp"
 
 TEST_CASE("Boundaries and configuration", "[config]") {
