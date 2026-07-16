@@ -70,18 +70,14 @@ bool Board::movePiece(const Position& from, const Position& to) {
 bool Board::replacePiece(const Position& position, std::unique_ptr<Piece> newPiece) {
     if (!newPiece) return false;
 
-    // מחפשים אם כבר קיים כלי במיקום הזה
     auto it = std::find_if(pieces_.begin(), pieces_.end(), [&](const std::unique_ptr<Piece>& p) {
         return p && p->position() == position;
     });
 
+    newPiece->setPosition(position);
     if (it != pieces_.end()) {
-        // אם מצאנו כלי, מחליפים אותו
-        newPiece->setPosition(position);
         *it = std::move(newPiece);
     } else {
-        // אם לא מצאנו כלי, מוסיפים את הכלי החדש לרשימה
-        newPiece->setPosition(position);
         pieces_.push_back(std::move(newPiece));
     }
     return true;
@@ -109,7 +105,8 @@ std::vector<RenderPiece> Board::getRenderState() const {
         rp.x = p->position().row();
         rp.y = p->position().col();
         rp.state = static_cast<int>(p->state());
-        rp.cooldownMs = 0.0; // default, real cooldown provided by piece/arbiter if available
+        rp.cooldownMs = 0.0;       // overlaid by GameEngine::getRenderState, which has arbiter access
+        rp.cooldownTotalMs = 0.0;
         out.push_back(rp);
     }
     return out;

@@ -2,9 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 
-Img::Img() {
-    // Constructor - img is automatically initialized as empty
-}
+Img::Img() {}
 
 Img& Img::read(const std::string& path,
                const std::pair<int, int>& size,
@@ -15,7 +13,7 @@ Img& Img::read(const std::string& path,
         throw std::runtime_error("Cannot load image: " + path);
     }
 
-    if (size.first != 0 && size.second != 0) {  // Check if size is not empty
+    if (size.first != 0 && size.second != 0) {
         int target_w = size.first;
         int target_h = size.second;
         int h = img.rows;

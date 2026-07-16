@@ -5,6 +5,8 @@
 
 namespace kungfu {
 
+// The other direction of the UI boundary: how a concrete view reports input
+// back out, without needing to know what a "cell" or a "piece" is.
 class IInputHandler {
 public:
 	virtual ~IInputHandler() = default;

@@ -32,11 +32,11 @@ struct RenderPiece {
 // carries no gameplay meaning. Rows/cols are plain ints, same convention as
 // RenderPiece, so this struct stays free of any Logic model type.
 struct BoardHighlight {
-    bool hasSelection = false;
+    bool hasSelection = false;   // whether a square is currently selected
     int selectedRow = 0;
     int selectedCol = 0;
 
-    bool hasLastMove = false;
+    bool hasLastMove = false;    // whether a recent move/jump should still be highlighted
     int lastMoveFromRow = 0;
     int lastMoveFromCol = 0;
     int lastMoveToRow = 0;
@@ -48,12 +48,14 @@ class IGameView {
 public:
     virtual ~IGameView() = default;
 
+    // Loads resources and opens the window/canvas. Called once, before the render loop starts.
     virtual void init() = 0;
 
     // Render current frame. `pieces` are in logical coordinates.
     virtual void render(const std::vector<kungfu::RenderPiece>& pieces,
                          const kungfu::BoardHighlight& highlight) = 0;
 
+    // False once the window has been closed - the signal that ends the caller's render loop.
     virtual bool isOpen() const = 0;
 
     // Register the handler that receives raw pixel clicks from this view.

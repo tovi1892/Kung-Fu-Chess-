@@ -14,6 +14,9 @@ namespace kungfu {
 // future non-OpenCV backend could reuse them with a different loader.
 class AssetManager {
 public:
+    // The full set of per-state animations for one piece type+color, sized
+    // to width x height. Loaded from disk and cached on first request; every
+    // later call for the same type+color returns the cached set.
     const PieceAnimationSet& getAnimations(PieceType type, PlayerColor color, int width, int height);
 
 private:

@@ -224,7 +224,8 @@ void RealTimeArbiter::advanceTime(int ms) {
                 if (targetPieceOpt.has_value() && targetPieceOpt.value() != nullptr) {
                     Piece* target = targetPieceOpt.value();
 
-                    // בדיקה האם כלי היעד נמצא כרגע בתנועה פעילה משלו
+                    // Is the piece already sitting on the next square itself
+                    // mid-move (does it have its own active PendingMove)?
                     PendingMove* otherPm = nullptr;
                     for (auto& opm : pendingMoves_) {
                         if (opm.active && opm.currentPos == nextPos) {
@@ -234,17 +235,20 @@ void RealTimeArbiter::advanceTime(int ms) {
                     }
 
                     if (otherPm != nullptr) {
-                        // התנגשות דינמית בזמן תנועה של שני כלים (Active Collision)
+                        // Both pieces are actively moving and their paths just crossed.
                         if (target->color() == currentPiece->color()) {
-                            // חוק 6: התנגשות ידידים - הכלי שמנסה להיכנס (pm) נעצר במקומו מיד
+                            // Same color: the piece trying to enter stops in
+                            // place; whichever piece was already there keeps
+                            // going, undisturbed.
                             currentPiece->setState(PieceState::Idle);
                             pm.active = false;
                             continue;
                         } else {
-                            // חוק 5: התנגשות אויבים - הכלי שנכנס למשבצת ומגלה שהיא
-                            // כבר תפוסה (pm) הוא זה שמנצח ומחסל את מי שכבר יושב שם
-                            // (otherPm), לא משנה מי מבין שניהם התחיל לזוז קודם.
-                            // המנצח (pm) נעצר בדיוק כאן - לא ממשיך ליעד המקורי שלו.
+                            // Enemy: whichever piece's step *enters* the
+                            // square and finds it already occupied wins,
+                            // regardless of which of the two started moving
+                            // first. The winner stops right here rather than
+                            // continuing toward its own original target.
                             target->setState(PieceState::Captured);
                             board_->removePiece(nextPos);
                             otherPm->active = false;
@@ -254,16 +258,16 @@ void RealTimeArbiter::advanceTime(int ms) {
                             capturedThisStep = true;
                         }
                     } else {
-                        // הכלי ביעד סטטי (אינו זז)
+                        // The piece at the target square isn't itself moving.
                         if (target->color() == currentPiece->color()) {
-                            // חסימה סטטית ידידותית
                             currentPiece->setState(PieceState::Idle);
                             pm.active = false;
                             continue;
                         } else {
                             if (target->state() == PieceState::Airborne) {
-                                // חוק הקפיצה: הכלי המרחף חסין - הוא נוחת ומחסל
-                                // את התוקף, במקום להיתפס כמו כלי סטטי רגיל.
+                                // An airborne piece is immune: it lands and
+                                // eliminates the attacker instead of being
+                                // captured like an ordinary stationary piece.
                                 resolveAirborneCounterKill(pm, currentPiece, target);
                                 if (kingCaptured_) {
                                     return;
@@ -271,10 +275,12 @@ void RealTimeArbiter::advanceTime(int ms) {
                                 continue;
                             }
 
-                            // הכאה של אויב סטטי - עוצרת את הגלישה כאן, בדיוק כמו בשחמט רגיל
+                            // Capturing a stationary enemy ends the slide
+                            // here, exactly like standard chess.
                             bool capturedKing = (target->type() == PieceType::King);
 
-                            // עצירת תנועות אחרות שרצו אל אותה משבצת היעד שנתפסה כעת
+                            // Any other pending move that was also racing
+                            // toward this now-captured square stops too.
                             for (auto& otherPm2 : pendingMoves_) {
                                 if (otherPm2.active && otherPm2.currentPos == nextPos) {
                                     otherPm2.active = false;
@@ -294,13 +300,14 @@ void RealTimeArbiter::advanceTime(int ms) {
                         }
                     }
                 } else {
-                    // אין שום כלי במשבצת הבאה - התקדמות רגילה במסלול
+                    // Nothing occupies the next square - just advance.
                     board_->movePiece(pm.currentPos, nextPos);
                     pm.currentPos = nextPos;
                 }
 
-                // אכילה עוצרת את המהלך כאן, גם אם זו לא המשבצת המבוקשת המקורית.
-                // אחרת - נבדוק אם הגענו ליעד הסופי של התנועה.
+                // A capture ends the move right here, even short of the
+                // originally requested target. Otherwise, check whether this
+                // step reached the final destination.
                 if (capturedThisStep || pm.currentPos == pm.to || currentTimeMs_ >= pm.arrivalTimeMs) {
                     pm.active = false;
                     if (auto arrivedPiece = board_->pieceAt(pm.currentPos); arrivedPiece.has_value()) {

@@ -17,9 +17,9 @@ namespace kungfu { struct RenderPiece; }
 
 namespace kungfu {
 
-// Application-service result for a move request 
-// reason is always present: "ok" for an accepted move, "game_over" when the
-// game has already ended, or a rule-level reason copied from MoveValidation.
+// Result of a requestMove() call. reason is always present: "ok" for an
+// accepted move, "game_over" when the game has already ended, or a
+// rule-level reason copied from RuleEngine's MoveValidation.
 struct MoveResult {
     bool is_accepted;
     std::string reason;
@@ -32,21 +32,43 @@ struct MoveResult {
 // RuleEngine).
 class GameEngine {
 public:
+    // A fresh, empty 8x8 board with a default RuleEngine.
     GameEngine();
+
+    // An existing board, with a default RuleEngine.
     explicit GameEngine(std::shared_ptr<IBoard> board);
-    // speedMultiplier scales both movement speed and post-move cooldown in
+
+    // An existing board and rule engine. speedMultiplier scales both
+    // movement speed and post-move cooldown/airborne duration in
     // RealTimeArbiter (>1.0 = faster game). Defaults to 1.0.
     GameEngine(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngine> ruleEngine,
                double speedMultiplier = 1.0);
 
+    // Marks the game as actively running. wait()/requestMove() have no
+    // effect until this is called.
     void start();
+
+    // Pauses the game; wait() becomes a no-op until start() is called again.
     void stop();
+
+    // True while the game is actively running (after start(), before
+    // stop() or a king capture).
     bool isRunning() const;
+
+    // True once a king has been captured and the game has ended.
     bool isFinished() const;
 
+    // Advances the simulated game clock by 'ms' milliseconds, resolving any
+    // in-flight moves, cooldowns, and airborne timers along the way. A
+    // no-op unless the game is currently running.
     void wait(int ms);
 
+    // Requests a move for whichever piece is at 'from', toward 'to'. See
+    // MoveResult above for the possible outcomes and their reasons.
     MoveResult requestMove(const Position& from, const Position& to);
+
+    // Requests a jump for the piece at 'pos' - a thin wrapper over tryJump
+    // below, and the entry point Controller actually calls.
     bool requestJump(const Position& pos);
 
     // Experimental "jump" mechanic (PieceState::Airborne) — not part of the
@@ -61,15 +83,29 @@ public:
     // direct manual hooks (used by unit tests) but are no longer the path
     // real gameplay takes to land a jump or resolve a landing collision.
     bool tryJump(const Position& cell);
+
+    // Manual hook: forces an airborne piece back to Idle. Not used by live
+    // gameplay (see tryJump above) - kept for direct unit testing.
     void resolveJump(const Position& cell);
+
+    // Manual hook mirroring RealTimeArbiter's real-time counter-kill: if the
+    // piece at 'cell' is airborne and 'arrivingFrom' holds an enemy piece,
+    // the attacker is removed and the jumper lands. Not used by live
+    // gameplay - kept for direct unit testing.
     bool handleArrivalAtAirbornCell(const Position& cell, const Position& arrivingFrom);
 
+    // The board this engine is playing on.
     std::shared_ptr<IBoard> getBoard() const;
 
-    // Snapshot of renderable state for the UI (non-owning, lightweight)
+    // A snapshot of every piece's renderable state for the UI (non-owning,
+    // lightweight) - see RenderPiece in Core_Interfaces/IGameView.hpp.
     std::vector<kungfu::RenderPiece> getRenderState() const;
 
+    // True when 'pos' falls within the board's actual dimensions.
     bool isPositionInBounds(const Position& pos) const;
+
+    // The board's row/column count (8x8 unless constructed otherwise, e.g.
+    // by BoardParser from a script with a different shape).
     int boardRows() const;
     int boardCols() const;
 
@@ -79,7 +115,7 @@ private:
     std::shared_ptr<IRuleEngine> ruleEngine_;
     MovementSystem movementSystem_;
 
-    // הפרדת האחריות: ניהול הזמן והתנועות עבר ל-Arbiter
+    // All real-time move/cooldown/airborne timing is delegated to the Arbiter.
     std::unique_ptr<RealTimeArbiter> arbiter_;
 };
 

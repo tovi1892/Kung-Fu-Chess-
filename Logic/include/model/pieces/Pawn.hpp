@@ -4,6 +4,8 @@
 
 namespace kungfu {
 
+// A thin identity subclass - see King.hpp for why this exists. Carries no
+// movement rules or other behavior of its own.
 class Pawn : public Piece {
 public:
     Pawn(PlayerColor color, Position position);

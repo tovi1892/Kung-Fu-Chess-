@@ -12,26 +12,27 @@
 
 namespace kungfu {
 
-// המבנה הועבר לכאן - שייך בלעדית לשכבת ה-Arbiter
+// One piece's in-flight move, tracked cell-by-cell. Owned exclusively by
+// RealTimeArbiter; GameEngine only ever reads a snapshot of these (via
+// snapshotPendingMoves) to interpolate a piece's on-screen position.
 struct PendingMove {
-    Position from;
-    Position to;
-    Position currentPos;
-    int startTimeMs;
-    int arrivalTimeMs;
-    int nextStepTimeMs;
-    int rowStep;
-    int colStep;
-    bool active = true;
-    // Non-owning identifier for which piece this pending move belongs to
-    uintptr_t pieceId = 0;
+    Position from;           // requested starting square
+    Position to;              // requested destination square
+    Position currentPos;      // the square the piece is actually on right now
+    int startTimeMs;          // simulated time the move began
+    int arrivalTimeMs;        // simulated time it will reach 'to', barring a collision
+    int nextStepTimeMs;       // simulated time of the next single-cell step
+    int rowStep;               // -1, 0, or 1: row direction of travel
+    int colStep;               // -1, 0, or 1: column direction of travel
+    bool active = true;        // false once the move has ended (arrival, capture, or block)
+    uintptr_t pieceId = 0;     // non-owning identifier for which piece this move belongs to
 };
 
 class RealTimeArbiter {
 public:
     // speedMultiplier scales both movement speed and post-move cooldown
-    // (>1.0 = faster game, <1.0 = slower). Defaults to 1.0, matching the
-    // course spec's fixed CELL_SIZE/PIECE_SPEED constants exactly.
+    // (>1.0 = faster game, <1.0 = slower). Defaults to 1.0, matching
+    // GameConfig's fixed kCellSizePx/kPieceSpeedPxPerSec constants exactly.
     RealTimeArbiter(std::shared_ptr<IBoard> board,
                      std::shared_ptr<IRuleEngine> ruleEngine,
                      double speedMultiplier = 1.0);

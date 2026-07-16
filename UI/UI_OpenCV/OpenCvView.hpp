@@ -9,6 +9,8 @@
 
 namespace kungfu {
 
+// The only IGameView implementation: an OpenCV window. See IGameView for
+// what each overridden method does.
 class OpenCvView : public IGameView {
 public:
     OpenCvView(int width = 800, int height = 800);

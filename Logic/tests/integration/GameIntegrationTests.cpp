@@ -5,10 +5,9 @@
 
 #include "texttests/ScriptRunner.hpp"
 
-// Text-based integration tests (course spec sections 13-16). Each script
-// drives the real user-facing path - Board parsing, click, wait, print board -
-// through ScriptRunner, and "print board" output is the only assertion
-// mechanism, exactly as the spec requires.
+// Text-based integration tests. Each script drives the real user-facing path
+// - Board parsing, click, wait, print board - through ScriptRunner, and
+// "print board" output is the only assertion mechanism.
 
 namespace {
 

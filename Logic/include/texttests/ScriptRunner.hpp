@@ -5,8 +5,8 @@
 
 namespace kungfu {
 
-// Command-script test harness (course spec sections 13-15). Drives the exact
-// same path a real user/UI would: BoardParser for the "Board:" section,
+// Command-script test harness. Drives the exact same path a real user/UI
+// would: BoardParser for the "Board:" section,
 // Controller for "click x y", GameEngine::wait for "wait ms", and
 // BoardPrinter for "print board" - the DSL's only assertion mechanism. Never
 // bypasses these to mutate the Board or the engine directly.

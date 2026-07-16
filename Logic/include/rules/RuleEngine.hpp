@@ -7,6 +7,8 @@
 
 namespace kungfu {
 
+// The only IRuleEngine implementation. See IRuleEngine for what each method
+// does - this class doesn't change those contracts, just implements them.
 class RuleEngine : public IRuleEngine {
 public:
     explicit RuleEngine(BoardPtr board);

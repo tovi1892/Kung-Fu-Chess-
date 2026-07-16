@@ -9,6 +9,11 @@
 
 namespace kungfu {
 
+// The only ICollisionSystem implementation. See ICollisionSystem for what
+// each method does - this class doesn't change those contracts, just
+// implements them. Note: PieceRules and RealTimeArbiter each do their own
+// inline occupancy checks rather than going through this class - it exists
+// as the documented, independently-tested version of the same geometry.
 class CollisionSystem : public ICollisionSystem {
 public:
     explicit CollisionSystem(BoardPtr board);

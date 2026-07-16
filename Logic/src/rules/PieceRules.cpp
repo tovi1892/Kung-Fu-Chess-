@@ -108,9 +108,6 @@ std::set<Position> KingRules::legalDestinations(const IBoard& board, const Piece
     return out;
 }
 
-// Pawn behavior: single step forward, diagonal capture, plus the team's own
-// double-step-from-start extension (kept alongside the common-route rules,
-// not part of the graded common route itself).
 std::set<Position> PawnRules::legalDestinations(const IBoard& board, const Piece& piece) const {
     std::set<Position> out;
     const Position& from = piece.position();

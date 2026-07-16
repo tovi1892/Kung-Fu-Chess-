@@ -8,9 +8,9 @@
 
 namespace kungfu {
 
-// Text I/O: parses a textual board layout into a Board. Depends only on model
-// data (course spec section 15) - knows nothing about Controller, RuleEngine,
-// RealTimeArbiter, or GameEngine.
+// Text I/O: parses a textual board layout into a Board. Depends only on
+// model data - knows nothing about Controller, RuleEngine, RealTimeArbiter,
+// or GameEngine.
 class BoardParser {
 public:
     // Convenience entry point for callers that just need the initial board
@@ -25,7 +25,10 @@ public:
                      std::shared_ptr<Board>& board,
                      std::string& errorMessage) const;
 
+    // Strips leading/trailing whitespace.
     static std::string trim(const std::string& s);
+
+    // Whitespace-tokenizes a line.
     static std::vector<std::string> split(const std::string& s);
 
 private:

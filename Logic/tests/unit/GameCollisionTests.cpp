@@ -17,7 +17,7 @@ using namespace kungfu;
 
 TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
 
-    SECTION("Rule 5: Dynamic Enemy Collision - the entering piece always wins") {
+    SECTION("Two enemy pieces converging mid-flight: whichever one enters the occupied square wins") {
         // Two rooks converge on (0,2), which is neither one's own final
         // destination. White reaches (0,2) first (at t=2000) and just sits
         // there mid-slide; Black's step into (0,2) at t=2500 is the one that
@@ -27,14 +27,12 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         GameEngine game(board);
         game.start();
 
-        // ניקוי הלוח
         for (int r = 0; r < 8; ++r) {
             for (int c = 0; c < 8; ++c) {
                 board->removePiece(Position(r, c));
             }
         }
 
-        // יצירת הכלים עם שני פרמטרים כנדרש בבנאי: (Color, Position)
         board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
         board->placePiece(std::make_unique<Rook>(PlayerColor::Black, Position(0, 4)), Position(0, 4));
         board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
@@ -68,7 +66,7 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         CHECK((*stillAt)->state() == PieceState::Idle);
     }
 
-    SECTION("Rule 6: Dynamic Friendly Collision") {
+    SECTION("Two friendly pieces converging mid-flight: the entering piece stops in place") {
         // Both rooks start on empty squares and race toward each other along
         // row 0, so the "friendly collision" only becomes real mid-flight
         // (via RealTimeArbiter's dynamic-collision check) rather than being
@@ -105,7 +103,7 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         CHECK((*stopped)->state() == PieceState::Idle);
     }
 
-    SECTION("Rule 8: Knight jumps over pieces and captures only on landing") {
+    SECTION("Knight jumps over pieces and captures only on landing") {
         auto board = std::make_shared<Board>();
         GameEngine game(board);
         game.start();
@@ -139,7 +137,7 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         REQUIRE(board->pieceAt(Position(0, 0)).has_value() == false);
     }
 
-    SECTION("Rule 8b: Knight cannot land on a friendly-occupied square") {
+    SECTION("Knight cannot land on a friendly-occupied square") {
         auto board = std::make_shared<Board>();
         GameEngine game(board);
         game.start();

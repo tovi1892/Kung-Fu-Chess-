@@ -24,8 +24,8 @@ enum class PieceState {
     Captured
 };
 
-// Check/checkmate are intentionally absent: the course spec's common route
-// excludes them entirely (win condition is king capture only).
+// Check/checkmate are intentionally absent - this game has no such concept;
+// the only win condition is capturing the enemy king.
 enum class GameState {
     NotStarted,
     Running,

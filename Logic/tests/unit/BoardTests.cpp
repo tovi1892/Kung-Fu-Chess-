@@ -5,8 +5,7 @@
 
 TEST_CASE("Board operations - basic piece management", "[board]") {
     kungfu::Board board;
-    
-    // יצירת מלך לבן
+
     auto king = std::make_unique<kungfu::King>(kungfu::PlayerColor::White, kungfu::Position(0, 0));
 
     SECTION("Placing a piece on an empty square succeeds") {
@@ -33,11 +32,10 @@ TEST_CASE("Board operations - basic piece management", "[board]") {
         board.placePiece(std::move(king), kungfu::Position(0, 0));
         board.movePiece(kungfu::Position(0, 0), kungfu::Position(1, 1));
         
-        // הסרה תקינה
         REQUIRE(board.removePiece(kungfu::Position(1, 1)) == true);
         REQUIRE(board.pieceAt(kungfu::Position(1, 1)).has_value() == false);
-        
-        // הסרה נוספת מאותו מקום צריכה להיכשל
+
+        // Removing from the same now-empty square again must fail.
         REQUIRE(board.removePiece(kungfu::Position(1, 1)) == false);
     }
 }

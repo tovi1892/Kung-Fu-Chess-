@@ -4,6 +4,9 @@
 #include <string>
 #include <filesystem>
 
+// A thin wrapper around cv::Mat: the one class in this project allowed to
+// call OpenCV pixel-drawing functions directly. Every other UI class draws
+// through this rather than touching cv::Mat itself.
 class Img {
 public:
     Img();
@@ -63,8 +66,12 @@ public:
                    const cv::Scalar& color, int thickness = 3);
 
     /**
-     * Draw this image onto another image at position (x, y)
-     * 
+     * Draw this image onto another image at position (x, y). If this image
+     * has a real alpha channel (4 channels), it is always alpha-blended
+     * into the target - even if the target has fewer channels - so a
+     * transparent source never gets flattened into an opaque box. If not,
+     * it's a plain copy (reformatted first if the channel counts differ).
+     *
      * @param other_img The target image to draw on
      * @param x X coordinate for top-left corner
      * @param y Y coordinate for top-left corner

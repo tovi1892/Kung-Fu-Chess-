@@ -12,10 +12,17 @@ namespace kungfu { struct RenderPiece; }
 
 namespace kungfu {
 
+// The only IBoard implementation: an in-memory, owning list of pieces. See
+// IBoard for what each method does - this class doesn't change those
+// contracts, just implements them.
 class Board : public IBoard {
 public:
+    // An empty 8x8 board.
     Board();
-    Board(int rows, int cols); // בנאי חדש לתמיכה בממדים דינמיים
+
+    // An empty board with a custom size (e.g. for a script-driven test board
+    // parsed by BoardParser).
+    Board(int rows, int cols);
 
     int rows() const override { return rows_; }
     int cols() const override { return cols_; }
@@ -26,16 +33,16 @@ public:
     bool movePiece(const Position& from, const Position& to) override;
     bool replacePiece(const Position& position, std::unique_ptr<Piece> newPiece) override;
 
-
     std::vector<Piece*> pieces() const override;
 
-    // Provide a lightweight render snapshot for UI. Non-owning pointers/ids returned.
+    // A lightweight render snapshot for the UI: one RenderPiece per piece,
+    // built straight from stored id/type/color/position/state. Non-owning.
     std::vector<kungfu::RenderPiece> getRenderState() const;
 
 private:
     std::vector<std::unique_ptr<Piece>> pieces_;
-    int rows_ = 8; // ברירת מחדל 8
-    int cols_ = 8; // ברירת מחדל 8
+    int rows_ = 8;
+    int cols_ = 8;
 };
 
 }  // namespace kungfu

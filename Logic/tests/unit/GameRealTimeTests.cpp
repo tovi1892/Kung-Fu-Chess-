@@ -2,7 +2,6 @@
 #include <memory>
 #include <optional>
 
-// כולל את כל המחלקות הדרושות
 #include "engine/GameEngine.hpp"
 #include "model/Board.hpp"
 #include "rules/RuleEngine.hpp"
@@ -35,7 +34,6 @@ TEST_CASE("Real-Time Simultaneous Movement and Collision Rules", "[game][realtim
         Position knightStart(0, 1);
         Position knightEnd(2, 2);
 
-        // שימוש ב-replacePiece עם שני ארגומנטים כפי שהוגדר
         ctx.board->replacePiece(pawnStart, std::make_unique<Pawn>(PlayerColor::White, pawnStart));
         ctx.board->replacePiece(knightStart, std::make_unique<Knight>(PlayerColor::White, knightStart));
 
@@ -59,7 +57,7 @@ TEST_CASE("Real-Time Collision - Edge Cases", "[game][edge-cases]") {
 
     SECTION("Boundary Collision - Corner of the Board") {
         TestContext ctx;
-        // מיקום בפינה (0,0) ומכשול ב-(0,1)
+        // A rook in the corner, blocked immediately by a friendly pawn.
         Position start(0, 0);
         Position target(0, 1);
         Position obstacle(0, 1);
@@ -67,17 +65,17 @@ TEST_CASE("Real-Time Collision - Edge Cases", "[game][edge-cases]") {
         ctx.board->replacePiece(start, std::make_unique<Rook>(PlayerColor::White, start));
         ctx.board->replacePiece(obstacle, std::make_unique<Pawn>(PlayerColor::White, obstacle));
 
-        // ניסיון לנוע לתוך כלי באותו צבע בפינה
+        // Moving onto a same-color piece must be rejected outright.
         bool result = ctx.game->requestMove(start, target).is_accepted;
-        
-        // מצפים שהמהלך ייחסם כי זה אותו צבע
+
         REQUIRE(result == false);
-        REQUIRE(ctx.board->pieceAt(start).has_value()); // הצריח חייב להישאר ב-(0,0)
+        REQUIRE(ctx.board->pieceAt(start).has_value());  // the rook never left (0,0)
     }
 
     SECTION("Long-Range Collision - Full Board Sweep") {
         TestContext ctx;
-        // צריח בצד אחד של הלוח, מכשול באמצע הדרך, ויעד בקצה השני
+        // A rook on one edge of the board, an enemy pawn blocking midway,
+        // and a target beyond it on the far edge.
         Position rookStart(0, 0);
         Position obstacle(0, 4);
         Position target(0, 7);
@@ -85,11 +83,13 @@ TEST_CASE("Real-Time Collision - Edge Cases", "[game][edge-cases]") {
         ctx.board->replacePiece(rookStart, std::make_unique<Rook>(PlayerColor::White, rookStart));
         ctx.board->replacePiece(obstacle, std::make_unique<Pawn>(PlayerColor::Black, obstacle));
 
-        // הצריח מנסה לעבור את כל הלוח
-        bool result = ctx.game->requestMove(rookStart, target).is_accepted;
+        // Requesting the full-board move is accepted (the path is only
+        // resolved dynamically once the rook is actually moving) - the
+        // point of this test is just that it doesn't crash or misbehave
+        // when requested; GameCollisionTests covers the actual stop-and-
+        // capture behavior once the rook reaches the pawn.
+        ctx.game->requestMove(rookStart, target);
 
-        // במקרה של אויב באמצע, החוקים צריכים לטפל בזה (או עצירה ליד, או אכילה בהתאם למנוע שלך)
-        // בהנחה שהמנוע שלך עוצר לפני כלי אויב או אוכל אותו - נוודא שהוא לא עובר דרכו
         REQUIRE(ctx.board->pieceAt(rookStart).has_value());
     }
 
@@ -98,10 +98,9 @@ TEST_CASE("Real-Time Collision - Edge Cases", "[game][edge-cases]") {
         Position pos(4, 4);
         ctx.board->replacePiece(pos, std::make_unique<Knight>(PlayerColor::White, pos));
 
-        // ניסיון לנוע לאותה משבצת
+        // Requesting a "move" to the same square must be rejected.
         bool result = ctx.game->requestMove(pos, pos).is_accepted;
-        
-        // מהלך כזה אמור להידחות או לא לשנות כלום
+
         REQUIRE(result == false);
     }
 }
