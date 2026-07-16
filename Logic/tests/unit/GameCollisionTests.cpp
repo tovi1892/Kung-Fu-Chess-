@@ -3,6 +3,7 @@
 #include <vector>
 #include "engine/GameEngine.hpp"
 #include "model/Board.hpp"
+#include "model/GameConfig.hpp"
 #include "model/Position.hpp"
 #include "model/pieces/Rook.hpp"
 #include "model/pieces/Knight.hpp"
@@ -16,7 +17,12 @@ using namespace kungfu;
 
 TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
 
-    SECTION("Rule 5: Dynamic Enemy Collision") {
+    SECTION("Rule 5: Dynamic Enemy Collision - the entering piece always wins") {
+        // Two rooks converge on (0,2), which is neither one's own final
+        // destination. White reaches (0,2) first (at t=2000) and just sits
+        // there mid-slide; Black's step into (0,2) at t=2500 is the one that
+        // discovers the square occupied - Black wins and stops right there,
+        // even though White started moving first (t=0 vs t=500).
         auto board = std::make_shared<Board>();
         GameEngine game(board);
         game.start();
@@ -37,11 +43,29 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         REQUIRE(game.requestMove(Position(0, 0), Position(0, 4)).is_accepted);
         game.wait(500);
         REQUIRE(game.requestMove(Position(0, 4), Position(0, 0)).is_accepted);
-        game.wait(2000);
+        game.wait(2000);  // t=2500: the collision resolves
 
         auto pieceAt = board->pieceAt(Position(0, 2));
         REQUIRE(pieceAt.has_value());
-        CHECK((*pieceAt)->color() == PlayerColor::White);
+        CHECK((*pieceAt)->color() == PlayerColor::Black);
+        CHECK((*pieceAt)->state() == PieceState::Cooldown);
+
+        bool whiteRookAlive = false;
+        for (Piece* p : board->pieces()) {
+            if (p->color() == PlayerColor::White && p->type() == PieceType::Rook) {
+                whiteRookAlive = true;
+            }
+        }
+        CHECK(whiteRookAlive == false);
+
+        // The winner stops right where it won, rather than continuing on
+        // toward (0,0) - its own original destination - once the cooldown
+        // it just entered fully elapses too.
+        game.wait(GameConfig::kBaseCooldownMs);
+        auto stillAt = board->pieceAt(Position(0, 2));
+        REQUIRE(stillAt.has_value());
+        CHECK((*stillAt)->color() == PlayerColor::Black);
+        CHECK((*stillAt)->state() == PieceState::Idle);
     }
 
     SECTION("Rule 6: Dynamic Friendly Collision") {
@@ -164,5 +188,63 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         CHECK((*stoppedAt)->color() == PlayerColor::White);
 
         REQUIRE(board->pieceAt(Position(0, 6)).has_value() == false);
+    }
+
+    SECTION("A piece's origin square becomes a legal target the instant it starts moving") {
+        auto board = std::make_shared<Board>();
+        GameEngine game(board);
+        game.start();
+
+        for (int r = 0; r < 8; ++r) {
+            for (int c = 0; c < 8; ++c) {
+                board->removePiece(Position(r, c));
+            }
+        }
+
+        board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(4, 4)), Position(4, 4));
+        board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(4, 1)), Position(4, 1));
+        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
+        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
+
+        // The rook at (4,4) starts leaving - still physically there (Board
+        // hasn't stepped it into its next cell yet), but its state is
+        // already Moving.
+        REQUIRE(game.requestMove(Position(4, 4), Position(4, 7)).is_accepted);
+        auto leaving = board->pieceAt(Position(4, 4));
+        REQUIRE(leaving.has_value());
+        CHECK((*leaving)->state() == PieceState::Moving);
+
+        // The other rook can target (4,4) immediately - no need to wait for
+        // the first rook to actually finish crossing into its next cell.
+        const auto result = game.requestMove(Position(4, 1), Position(4, 4));
+        CHECK(result.is_accepted);
+        CHECK(result.reason == "ok");
+    }
+
+    SECTION("A friendly piece on cooldown still blocks its square (only Moving is exempt)") {
+        auto board = std::make_shared<Board>();
+        GameEngine game(board);
+        game.start();
+
+        for (int r = 0; r < 8; ++r) {
+            for (int c = 0; c < 8; ++c) {
+                board->removePiece(Position(r, c));
+            }
+        }
+
+        board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
+        board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 3)), Position(0, 3));
+        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
+        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
+
+        REQUIRE(game.requestMove(Position(0, 0), Position(0, 1)).is_accepted);
+        game.wait(GameConfig::kMsPerCell);  // arrival - now on cooldown at (0,1)
+        auto cooling = board->pieceAt(Position(0, 1));
+        REQUIRE(cooling.has_value());
+        CHECK((*cooling)->state() == PieceState::Cooldown);
+
+        const auto result = game.requestMove(Position(0, 3), Position(0, 1));
+        CHECK(result.is_accepted == false);
+        CHECK(result.reason == "friendly_destination");
     }
 }

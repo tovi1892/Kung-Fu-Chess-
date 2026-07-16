@@ -14,14 +14,28 @@ bool isInBounds(const IBoard& board, const Position& pos) {
            pos.col() >= 0 && pos.col() < board.cols();
 }
 
+// True when 'occupant' should block a square from being a legal target: it's
+// a friendly piece that is actually staying put. A friendly piece that is
+// itself PieceState::Moving is already on its way out - by the time any new
+// move actually reaches that square, real-time resolution in RealTimeArbiter
+// will find it vacated (or, if the timing is close, resolve the encounter
+// dynamically there) - so its square is legal to request the instant it
+// starts moving, not only once it finishes crossing into the next cell.
+bool blocksAsStationaryFriendly(const std::optional<Piece*>& occupant, PlayerColor movingColor) {
+    return occupant.has_value() && occupant.value() != nullptr &&
+           occupant.value()->color() == movingColor &&
+           occupant.value()->state() != PieceState::Moving;
+}
+
 // Walks outward from 'piece' one direction at a time, all the way to the edge
-// of the board. Squares occupied by a friendly piece are never legal targets
-// (never legal to capture your own piece), but - unlike standard chess -
-// anything beyond a blocker (friendly or enemy) is still a legal *request*:
-// this team's real-time rules allow requesting a move "through" pieces, since
-// whatever is in the way might move out of it before this piece actually gets
-// there. Whether the move actually reaches that far, or stops/captures short,
-// is resolved dynamically during the motion by RealTimeArbiter - not here.
+// of the board. Squares occupied by a stationary friendly piece are never
+// legal targets (never legal to capture your own piece), but - unlike
+// standard chess - anything beyond a blocker (friendly or enemy) is still a
+// legal *request*: this team's real-time rules allow requesting a move
+// "through" pieces, since whatever is in the way might move out of it before
+// this piece actually gets there. Whether the move actually reaches that far,
+// or stops/captures short, is resolved dynamically during the motion by
+// RealTimeArbiter - not here.
 void collectSlidingDestinations(const IBoard& board,
                                  const Piece& piece,
                                  const std::vector<std::pair<int, int>>& directions,
@@ -31,9 +45,7 @@ void collectSlidingDestinations(const IBoard& board,
         Position candidate(from.row() + dr, from.col() + dc);
         while (isInBounds(board, candidate)) {
             const auto occupant = board.pieceAt(candidate);
-            const bool isFriendly = occupant.has_value() && occupant.value() != nullptr &&
-                                     occupant.value()->color() == piece.color();
-            if (!isFriendly) {
+            if (!blocksAsStationaryFriendly(occupant, piece.color())) {
                 out.insert(candidate);
             }
             candidate = Position(candidate.row() + dr, candidate.col() + dc);
@@ -52,8 +64,7 @@ void collectSteppedDestinations(const IBoard& board,
             continue;
         }
         const auto occupant = board.pieceAt(candidate);
-        if (!occupant.has_value() || occupant.value() == nullptr ||
-            occupant.value()->color() != piece.color()) {
+        if (!blocksAsStationaryFriendly(occupant, piece.color())) {
             out.insert(candidate);
         }
     }
@@ -107,18 +118,25 @@ std::set<Position> PawnRules::legalDestinations(const IBoard& board, const Piece
     const int forward = isWhite ? 1 : -1;
     const int startRow = isWhite ? GameConfig::kWhitePawnStartRow : GameConfig::kBlackPawnStartRow;
 
+    // A pawn's forward step never captures, so any occupant (friendly or
+    // enemy) blocks it - except one that's already Moving and thus vacating,
+    // same exception as the sliding/stepped pieces above.
+    auto blocksForwardStep = [](const std::optional<Piece*>& occupant) {
+        return occupant.has_value() && occupant.value() != nullptr &&
+               occupant.value()->state() != PieceState::Moving;
+    };
+
     const Position oneStep(from.row() + forward, from.col());
     if (isInBounds(board, oneStep)) {
         const auto occupant = board.pieceAt(oneStep);
-        const bool oneStepEmpty = !occupant.has_value() || occupant.value() == nullptr;
-        if (oneStepEmpty) {
+        if (!blocksForwardStep(occupant)) {
             out.insert(oneStep);
 
             if (from.row() == startRow) {
                 const Position twoStep(from.row() + 2 * forward, from.col());
                 if (isInBounds(board, twoStep)) {
                     const auto occupant2 = board.pieceAt(twoStep);
-                    if (!occupant2.has_value() || occupant2.value() == nullptr) {
+                    if (!blocksForwardStep(occupant2)) {
                         out.insert(twoStep);
                     }
                 }

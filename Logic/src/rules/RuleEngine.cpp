@@ -31,9 +31,15 @@ MoveValidation RuleEngine::validateMove(const Position& from, const Position& to
     }
     const Piece* movingPiece = sourcePiece.value();
 
+    // A friendly piece occupies 'to' and blocks it - unless that piece is
+    // itself already Moving (on its way out), in which case its square is
+    // fair game the instant it starts leaving, not only once it finishes
+    // crossing into the next cell. Mirrors PieceRules' own exception, so
+    // this early-exit reason stays consistent with legalDestinations below.
     const auto targetPiece = board_->pieceAt(to);
     if (targetPiece.has_value() && targetPiece.value() != nullptr &&
-        targetPiece.value()->color() == movingPiece->color()) {
+        targetPiece.value()->color() == movingPiece->color() &&
+        targetPiece.value()->state() != PieceState::Moving) {
         return {false, "friendly_destination"};
     }
 

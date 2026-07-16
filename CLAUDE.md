@@ -81,8 +81,13 @@ The project is split into three layers with a strict dependency direction: `UI` 
     same geometry primitive.
   - `realtime/` (`RealTimeArbiter`) — the real-time heart of the game (extra features: simultaneous movement +
     collision between moving pieces). Tracks in-flight `PendingMove`s and, on each `advanceTime(ms)` tick, resolves
-    per-step collisions: friendly pieces block each other, enemy pieces racing for the same square are decided by
-    whichever started moving first. Knights are handled separately as a single atomic hop resolved only at
+    per-step collisions: friendly pieces block each other (the entering piece stops in place); when two enemy pieces
+    meet on a square that's neither's final destination, whichever one's real-time step *enters* that square and
+    finds it already occupied wins and stops there — not whichever one started moving first. A piece's own origin
+    square stops blocking new requests the instant it starts moving (`PieceState::Moving`), rather than only once it
+    finishes crossing into its next cell — `RuleEngine`/`PieceRules` treat a `Moving` friendly piece's square as
+    available, and any actual encounter is resolved dynamically here at runtime. Knights are handled separately as a
+    single atomic hop resolved only at
     `arrivalTimeMs`: no intermediate square blocks them or gets captured, and they can never land on a
     friendly-occupied square (rejected earlier by `RuleEngine`) — only what's on the landing square at arrival is
     ever inspected. Also resolves pawn promotion on arrival. A captured king ends the game.

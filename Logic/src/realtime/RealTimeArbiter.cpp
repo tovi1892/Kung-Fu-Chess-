@@ -241,23 +241,17 @@ void RealTimeArbiter::advanceTime(int ms) {
                             pm.active = false;
                             continue;
                         } else {
-                            // חוק 5: התנגשות אויבים - זה שהתחיל לזוז קודם (startTimeMs נמוך יותר) מנצח!
-                            if (pm.startTimeMs < otherPm->startTimeMs) {
-                                // pm מנצח ומחסל את otherPm
-                                target->setState(PieceState::Captured);
-                                board_->removePiece(nextPos);
-                                otherPm->active = false;
+                            // חוק 5: התנגשות אויבים - הכלי שנכנס למשבצת ומגלה שהיא
+                            // כבר תפוסה (pm) הוא זה שמנצח ומחסל את מי שכבר יושב שם
+                            // (otherPm), לא משנה מי מבין שניהם התחיל לזוז קודם.
+                            // המנצח (pm) נעצר בדיוק כאן - לא ממשיך ליעד המקורי שלו.
+                            target->setState(PieceState::Captured);
+                            board_->removePiece(nextPos);
+                            otherPm->active = false;
 
-                                board_->movePiece(pm.currentPos, nextPos);
-                                pm.currentPos = nextPos;
-                                capturedThisStep = true;
-                            } else {
-                                // otherPm מנצח ומחסל את pm
-                                currentPiece->setState(PieceState::Captured);
-                                board_->removePiece(pm.currentPos);
-                                pm.active = false;
-                                continue;
-                            }
+                            board_->movePiece(pm.currentPos, nextPos);
+                            pm.currentPos = nextPos;
+                            capturedThisStep = true;
                         }
                     } else {
                         // הכלי ביעד סטטי (אינו זז)
