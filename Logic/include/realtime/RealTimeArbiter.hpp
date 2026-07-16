@@ -51,10 +51,11 @@ public:
     void setPremove(uintptr_t pieceId, const Position& to);
 
     // Starts the airborne timer for a piece GameEngine::tryJump just put into
-    // PieceState::Airborne. Once the timer expires it lands back to Idle on
-    // its own (see resolveAirborneExpirations); if an enemy's real-time move
-    // reaches its square first, advanceTime resolves the counter-kill instead
-    // (the jumper survives and lands, the attacker is the one removed).
+    // PieceState::Airborne. Once the timer expires it lands into a short
+    // rest (see resolveAirborneExpirations), same as after a real move's
+    // arrival; if an enemy's real-time move reaches its square first,
+    // advanceTime resolves the counter-kill instead (the jumper survives
+    // and lands, the attacker is the one removed).
     void beginAirborne(uintptr_t pieceId);
 
     // Return a snapshot copy of pending moves for external inspection
@@ -66,30 +67,38 @@ public:
     int msPerCell() const { return msPerCell_; }
     int cooldownMs() const { return cooldownMs_; }
     int airborneMs() const { return airborneMs_; }
+    int shortRestMs() const { return shortRestMs_; }
 
     // Remaining post-move cooldown for one piece, in ms; 0 if it isn't
     // currently on cooldown. Lets GameEngine::getRenderState surface real
-    // cooldown progress to the UI without exposing the CooldownEntry
-    // bookkeeping this class keeps privately.
+    // cooldown progress to the UI without exposing the timer bookkeeping
+    // this class keeps privately.
     int cooldownRemainingMs(uintptr_t pieceId) const;
 
-private:
-    struct CooldownEntry {
-        uintptr_t pieceId;
-        int endTimeMs;
-    };
+    // Same as cooldownRemainingMs, for the short rest a piece enters after
+    // landing from a jump (see PieceState::ShortRest).
+    int shortRestRemainingMs(uintptr_t pieceId) const;
 
-    struct AirborneEntry {
+private:
+    // A piece-id + expiry-time pair, shared by every "this piece is
+    // temporarily unavailable, and may have a premove queued" timer this
+    // class tracks (cooldown, airborne, short rest).
+    struct TimerEntry {
         uintptr_t pieceId;
         int endTimeMs;
     };
 
     void promoteIfNeeded(const Position& pos);
     void beginCooldown(Piece* piece);
+    // Puts a piece that just landed from a jump (naturally or via a
+    // counter-kill) into PieceState::ShortRest and starts its rest timer -
+    // the jump's equivalent of beginCooldown above.
+    void beginShortRest(Piece* piece);
     void resolveCooldownExpirations();
     void resolveAirborneExpirations();
+    void resolveShortRestExpirations();
     // An enemy's real-time move stepped onto a square held by an airborne
-    // piece: the jumper is immune, so it lands (back to Idle) and the
+    // piece: the jumper is immune, so it lands into a short rest and the
     // attacker is removed instead of the usual capture-and-advance.
     void resolveAirborneCounterKill(PendingMove& pm, Piece* attacker, Piece* airbornePiece);
 
@@ -98,9 +107,11 @@ private:
     int msPerCell_;
     int cooldownMs_;
     int airborneMs_;
+    int shortRestMs_;
     std::vector<PendingMove> pendingMoves_;
-    std::vector<CooldownEntry> cooldowns_;
-    std::vector<AirborneEntry> airborneEntries_;
+    std::vector<TimerEntry> cooldowns_;
+    std::vector<TimerEntry> airborneEntries_;
+    std::vector<TimerEntry> shortRestEntries_;
     std::unordered_map<uintptr_t, Position> premoves_;
     int currentTimeMs_ = 0;
     bool kingCaptured_ = false;

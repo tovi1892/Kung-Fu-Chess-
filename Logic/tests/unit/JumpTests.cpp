@@ -27,7 +27,7 @@ TEST_CASE("Jump mechanic logic", "[jump]") {
     }
 }
 
-TEST_CASE("An airborne piece lands back to Idle on its own once kBaseAirborneMs elapses", "[jump][realtime]") {
+TEST_CASE("An airborne piece enters a short rest once kBaseAirborneMs elapses, then returns to Idle", "[jump][realtime]") {
     auto board = std::make_shared<Board>();
     board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(3, 3)), Position(3, 3));
     GameEngine game(board);
@@ -40,10 +40,16 @@ TEST_CASE("An airborne piece lands back to Idle on its own once kBaseAirborneMs 
     CHECK(board->pieceAt(Position(3, 3)).value()->isAirborne());
 
     game.wait(1);  // the last millisecond of the airborne window
+    CHECK(board->pieceAt(Position(3, 3)).value()->state() == PieceState::ShortRest);
+
+    game.wait(GameConfig::kBaseShortRestMs - 1);
+    CHECK(board->pieceAt(Position(3, 3)).value()->state() == PieceState::ShortRest);
+
+    game.wait(1);  // the last millisecond of the short rest
     CHECK(board->pieceAt(Position(3, 3)).value()->state() == PieceState::Idle);
 }
 
-TEST_CASE("A piece cannot jump while already airborne, moving, or on cooldown", "[jump][realtime]") {
+TEST_CASE("A piece cannot jump while already airborne, resting, moving, or on cooldown", "[jump][realtime]") {
     auto board = std::make_shared<Board>();
     board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
     GameEngine game(board);
@@ -52,7 +58,11 @@ TEST_CASE("A piece cannot jump while already airborne, moving, or on cooldown", 
     REQUIRE(game.tryJump(Position(0, 0)));
     CHECK(game.tryJump(Position(0, 0)) == false);  // already airborne
 
-    game.wait(GameConfig::kBaseAirborneMs);  // lands back to Idle
+    game.wait(GameConfig::kBaseAirborneMs);  // lands into a short rest
+    CHECK(board->pieceAt(Position(0, 0)).value()->state() == PieceState::ShortRest);
+    CHECK(game.tryJump(Position(0, 0)) == false);  // resting
+
+    game.wait(GameConfig::kBaseShortRestMs);  // rest elapses - back to Idle
 
     REQUIRE(game.requestMove(Position(0, 0), Position(0, 1)).is_accepted);
     CHECK(game.tryJump(Position(0, 1)) == false);  // mid-move
@@ -93,7 +103,7 @@ TEST_CASE("An enemy sliding piece that reaches an airborne square kills the atta
     auto survivor = board->pieceAt(Position(3, 3));
     REQUIRE(survivor.has_value());
     CHECK((*survivor)->color() == PlayerColor::White);
-    CHECK((*survivor)->state() == PieceState::Idle);  // landed, no longer airborne
+    CHECK((*survivor)->state() == PieceState::ShortRest);  // landed, no longer airborne
 }
 
 TEST_CASE("A knight landing on an airborne enemy is also killed by the counter-kill", "[jump][realtime]") {
@@ -105,14 +115,24 @@ TEST_CASE("A knight landing on an airborne enemy is also killed by the counter-k
     GameEngine game(board);
     game.start();
 
-    REQUIRE(game.tryJump(Position(3, 3)));
+    // A knight resolves as a single atomic hop only at arrival (no
+    // intermediate ticks matter), so the jump only needs to start before
+    // that instant - not before the knight began its approach. Start the
+    // knight moving first, then jump shortly before it's due to land, well
+    // inside the airborne window regardless of how kMsPerCell/kBaseAirborneMs
+    // happen to be tuned relative to each other.
     REQUIRE(game.requestMove(Position(1, 2), Position(3, 3)).is_accepted);  // valid knight L-shape
 
-    game.wait(2 * GameConfig::kMsPerCell);  // knight's fixed 2-cell hop timing
+    const int knightArrivalMs = 2 * GameConfig::kMsPerCell;
+    const int jumpLeadMs = GameConfig::kBaseAirborneMs / 2;
+    game.wait(knightArrivalMs - jumpLeadMs);
+    REQUIRE(game.tryJump(Position(3, 3)));
+
+    game.wait(jumpLeadMs);  // the knight's hop resolves now, mid-airborne-window
 
     CHECK(board->pieceAt(Position(1, 2)).has_value() == false);  // the knight died on landing
     auto survivor = board->pieceAt(Position(3, 3));
     REQUIRE(survivor.has_value());
     CHECK((*survivor)->type() == PieceType::Rook);
-    CHECK((*survivor)->state() == PieceState::Idle);
+    CHECK((*survivor)->state() == PieceState::ShortRest);
 }

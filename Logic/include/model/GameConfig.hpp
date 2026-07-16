@@ -13,7 +13,7 @@ struct GameConfig {
     // (1x game speed). kMsPerCell is the time it takes to cross one cell -
     // the base unit RealTimeArbiter builds all of its move timing from.
     // (~700ms at 1x speed.)
-    static constexpr int kCellSizePx = 100;
+    static constexpr int kCellSizePx = 80;
     static constexpr int kPieceSpeedPxPerSec = 143;
     static constexpr int kMsPerCell = 1000 * kCellSizePx / kPieceSpeedPxPerSec;
 
@@ -23,12 +23,19 @@ struct GameConfig {
     static constexpr int kBaseCooldownMs = 1500;
 
     // How long a piece stays airborne after jumping (experimental "jump"
-    // mechanic) before landing back to Idle on its own. Scales with
-    // speedMultiplier too. Chosen to comfortably outlast a knight's fixed
-    // 2-cell (2 * kMsPerCell) approach, so a jump can dodge a knight attack
-    // and not just an adjacent sliding piece - while still being short
-    // enough that a jump is a real gamble, not a near-guaranteed dodge.
-    static constexpr int kBaseAirborneMs = 1500;
+    // mechanic) before landing into a short rest on its own (see
+    // kBaseShortRestMs below). Scales with speedMultiplier too. A jump can
+    // still dodge an approaching knight if timed well (jumping shortly
+    // before the knight's fixed 2-cell hop lands), but no longer
+    // automatically outlasts a knight's full approach the way it did at
+    // higher values - it's meant to be a real gamble, not a guaranteed dodge.
+    static constexpr int kBaseAirborneMs = 1200;
+
+    // How long a piece rests after landing from a jump (naturally, or via a
+    // counter-kill) before it's selectable again - shorter than the regular
+    // post-move cooldown above, since a jump's landing is a lighter action
+    // than a full move. Scales with speedMultiplier, same as kBaseCooldownMs.
+    static constexpr int kBaseShortRestMs = kBaseCooldownMs / 2;
 
     // Pawn start rows (the row a pawn sits on at game start).
     static constexpr int kWhitePawnStartRow = 1;

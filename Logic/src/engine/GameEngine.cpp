@@ -49,10 +49,10 @@ MoveResult GameEngine::requestMove(const Position& from, const Position& to) {
         return {false, "piece_airborne"};
     }
 
-    if (movingPiece->state() == PieceState::Cooldown) {
+    if (movingPiece->state() == PieceState::Cooldown || movingPiece->state() == PieceState::ShortRest) {
         // Queued unvalidated: this is also how submitting a deliberately
         // illegal request cancels a previously queued premove (it overwrites
-        // the same slot, and will itself fail validation when cooldown ends).
+        // the same slot, and will itself fail validation when the rest ends).
         arbiter_->setPremove(static_cast<uintptr_t>(movingPiece->id()), to);
         return {true, "premove_queued"};
     }
@@ -143,6 +143,12 @@ std::vector<RenderPiece> GameEngine::getRenderState() const {
             // cooldown so a view can draw a progress indicator.
             rp.cooldownMs = static_cast<double>(arbiter_->cooldownRemainingMs(rp.id));
             rp.cooldownTotalMs = static_cast<double>(arbiter_->cooldownMs());
+        } else if (static_cast<PieceState>(rp.state) == PieceState::ShortRest) {
+            // Resting after a jump: same idea, shorter total duration -
+            // reuses cooldownMs/cooldownTotalMs since a view only needs "how
+            // much of this unavailable period is left", not why.
+            rp.cooldownMs = static_cast<double>(arbiter_->shortRestRemainingMs(rp.id));
+            rp.cooldownTotalMs = static_cast<double>(arbiter_->shortRestMs());
         }
     }
 
@@ -175,6 +181,7 @@ bool GameEngine::tryJump(const Position& cell) {
     if (pieceState == PieceState::Moving ||
         pieceState == PieceState::Airborne ||
         pieceState == PieceState::Cooldown ||
+        pieceState == PieceState::ShortRest ||
         pieceState == PieceState::Captured) {
         return false;
     }

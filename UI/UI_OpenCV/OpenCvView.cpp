@@ -62,14 +62,15 @@ cv::Scalar lerpColor(const cv::Scalar& from, const cv::Scalar& to, double t) {
                        from[2] + (to[2] - from[2]) * t);
 }
 
-// A radial "charging up" meter for a piece's post-move cooldown: a dim track
-// ring plus a brighter arc that sweeps clockwise from 12 o'clock as the
-// cooldown elapses (empty right after landing, a full ring once selectable
-// again), colored from rust to gold so it reads as "warming up" rather than
-// alarming - deliberately distinct from the white selection / green
-// last-move outlines so the three highlights never get visually confused.
-void drawCooldownRing(Img& frame, const CoordinateMapper& mapper, int cellPx, int cellPy,
-                       double remainingMs, double totalMs) {
+// A radial "charging up" meter for any piece-unavailable timer with a known
+// remaining/total duration (post-move cooldown or post-jump short rest): a
+// dim track ring plus a brighter arc that sweeps clockwise from 12 o'clock
+// as the wait elapses (empty right after landing, a full ring once
+// selectable again), colored from rust to gold so it reads as "warming up"
+// rather than alarming - deliberately distinct from the white selection /
+// green last-move outlines so the highlights never get visually confused.
+void drawRestRing(Img& frame, const CoordinateMapper& mapper, int cellPx, int cellPy,
+                   double remainingMs, double totalMs) {
     static const cv::Scalar kTrackColor(70, 70, 70);
     static const cv::Scalar kStartColor(20, 90, 170);    // rust - just landed, long wait ahead
     static const cv::Scalar kReadyColor(40, 210, 255);   // gold - about to become selectable
@@ -121,7 +122,7 @@ void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighl
         sequence.frames[frameIndex].draw_on(frame, px, py);
 
         if (rp.cooldownMs > 0 && rp.cooldownTotalMs > 0) {
-            drawCooldownRing(frame, mapper_, px, py, rp.cooldownMs, rp.cooldownTotalMs);
+            drawRestRing(frame, mapper_, px, py, rp.cooldownMs, rp.cooldownTotalMs);
         }
     }
 

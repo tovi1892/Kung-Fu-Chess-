@@ -15,6 +15,7 @@ RealTimeArbiter::RealTimeArbiter(std::shared_ptr<IBoard> board,
       msPerCell_(static_cast<int>(GameConfig::kMsPerCell / speedMultiplier)),
       cooldownMs_(static_cast<int>(GameConfig::kBaseCooldownMs / speedMultiplier)),
       airborneMs_(static_cast<int>(GameConfig::kBaseAirborneMs / speedMultiplier)),
+      shortRestMs_(static_cast<int>(GameConfig::kBaseShortRestMs / speedMultiplier)),
       currentTimeMs_(0),
       kingCaptured_(false) {}
 
@@ -37,6 +38,12 @@ void RealTimeArbiter::beginCooldown(Piece* piece) {
     if (!piece) return;
     piece->setState(PieceState::Cooldown);
     cooldowns_.push_back({static_cast<uintptr_t>(piece->id()), currentTimeMs_ + cooldownMs_});
+}
+
+void RealTimeArbiter::beginShortRest(Piece* piece) {
+    if (!piece) return;
+    piece->setState(PieceState::ShortRest);
+    shortRestEntries_.push_back({static_cast<uintptr_t>(piece->id()), currentTimeMs_ + shortRestMs_});
 }
 
 void RealTimeArbiter::startMove(const Position& from, const Position& to, uintptr_t pieceId) {
@@ -75,6 +82,15 @@ int RealTimeArbiter::cooldownRemainingMs(uintptr_t pieceId) const {
     return 0;
 }
 
+int RealTimeArbiter::shortRestRemainingMs(uintptr_t pieceId) const {
+    for (const auto& entry : shortRestEntries_) {
+        if (entry.pieceId == pieceId) {
+            return std::max(0, entry.endTimeMs - currentTimeMs_);
+        }
+    }
+    return 0;
+}
+
 void RealTimeArbiter::beginAirborne(uintptr_t pieceId) {
     airborneEntries_.push_back({pieceId, currentTimeMs_ + airborneMs_});
 }
@@ -83,7 +99,7 @@ void RealTimeArbiter::resolveAirborneCounterKill(PendingMove& pm, Piece* attacke
     const bool attackerWasKing = (attacker->type() == PieceType::King);
     board_->removePiece(pm.currentPos);
     pm.active = false;
-    airbornePiece->setState(PieceState::Idle);
+    beginShortRest(airbornePiece);
     if (attackerWasKing) {
         kingCaptured_ = true;
     }
@@ -109,7 +125,7 @@ void RealTimeArbiter::resolveAirborneExpirations() {
         if (!piece || piece->state() != PieceState::Airborne) {
             continue;  // already landed some other way (e.g. counter-kill)
         }
-        piece->setState(PieceState::Idle);
+        beginShortRest(piece);
     }
 }
 
@@ -149,6 +165,48 @@ void RealTimeArbiter::resolveCooldownExpirations() {
         if (!validation.is_valid) {
             continue;  // invalid premove just fizzles - this is also how a
                        // deliberately-illegal request cancels a real one.
+        }
+
+        piece->setState(PieceState::Moving);
+        startMove(piece->position(), to, pieceId);
+    }
+}
+
+void RealTimeArbiter::resolveShortRestExpirations() {
+    for (auto it = shortRestEntries_.begin(); it != shortRestEntries_.end();) {
+        if (it->endTimeMs != currentTimeMs_) {
+            ++it;
+            continue;
+        }
+
+        const uintptr_t pieceId = it->pieceId;
+        it = shortRestEntries_.erase(it);
+
+        Piece* piece = nullptr;
+        for (Piece* candidate : board_->pieces()) {
+            if (candidate && static_cast<uintptr_t>(candidate->id()) == pieceId) {
+                piece = candidate;
+                break;
+            }
+        }
+        if (!piece || piece->state() != PieceState::ShortRest) {
+            continue;
+        }
+        piece->setState(PieceState::Idle);
+
+        auto premoveIt = premoves_.find(pieceId);
+        if (premoveIt == premoves_.end()) {
+            continue;
+        }
+        const Position to = premoveIt->second;
+        premoves_.erase(premoveIt);
+
+        if (!ruleEngine_) {
+            continue;
+        }
+        const auto validation = ruleEngine_->validateMove(piece->position(), to);
+        if (!validation.is_valid) {
+            continue;  // invalid premove just fizzles, same as after a cooldown
         }
 
         piece->setState(PieceState::Moving);
@@ -327,6 +385,7 @@ void RealTimeArbiter::advanceTime(int ms) {
 
         resolveCooldownExpirations();
         resolveAirborneExpirations();
+        resolveShortRestExpirations();
 
         if (kingCaptured_) return;
     }

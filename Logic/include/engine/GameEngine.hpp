@@ -75,17 +75,21 @@ public:
     // graded common/extra route. tryJump is the real entry point used during
     // play (Controller re-clicking the same cell): it starts an airborne
     // timer in RealTimeArbiter (GameConfig::kBaseAirborneMs, scaled by
-    // speedMultiplier like cooldown) that lands the piece back to Idle on its
-    // own, and RealTimeArbiter::advanceTime resolves the counter-kill in
-    // real time if an enemy's move reaches the airborne square first (the
-    // jumper survives, the attacker is removed instead of the usual
-    // capture). resolveJump/handleArrivalAtAirbornCell below remain as
-    // direct manual hooks (used by unit tests) but are no longer the path
-    // real gameplay takes to land a jump or resolve a landing collision.
+    // speedMultiplier like cooldown) that lands the piece into a short rest
+    // (PieceState::ShortRest, GameConfig::kBaseShortRestMs) on its own, and
+    // RealTimeArbiter::advanceTime resolves the counter-kill in real time if
+    // an enemy's move reaches the airborne square first (the jumper
+    // survives and lands into the same short rest, the attacker is removed
+    // instead of the usual capture). resolveJump/handleArrivalAtAirbornCell
+    // below remain as direct manual hooks (used by unit tests, and forcing
+    // straight to Idle rather than through a short rest) but are no longer
+    // the path real gameplay takes to land a jump or resolve a landing
+    // collision.
     bool tryJump(const Position& cell);
 
-    // Manual hook: forces an airborne piece back to Idle. Not used by live
-    // gameplay (see tryJump above) - kept for direct unit testing.
+    // Manual hook: forces an airborne piece back to Idle (skipping the short
+    // rest real landings go through). Not used by live gameplay (see
+    // tryJump above) - kept for direct unit testing.
     void resolveJump(const Position& cell);
 
     // Manual hook mirroring RealTimeArbiter's real-time counter-kill: if the

@@ -19,8 +19,9 @@ enum class PlayerColor {
 enum class PieceState {
     Idle,
     Moving,
-    Cooldown,   // arrived from a move; not selectable again until the cooldown elapses
+    Cooldown,    // arrived from a move; not selectable again until the cooldown elapses
     Airborne,
+    ShortRest,   // landed from a jump; not selectable again until the (shorter) rest elapses
     Captured
 };
 
