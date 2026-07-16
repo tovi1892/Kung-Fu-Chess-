@@ -29,7 +29,7 @@ struct GameConfig {
     // before the knight's fixed 2-cell hop lands), but no longer
     // automatically outlasts a knight's full approach the way it did at
     // higher values - it's meant to be a real gamble, not a guaranteed dodge.
-    static constexpr int kBaseAirborneMs = 1200;
+    static constexpr int kBaseAirborneMs = 700;
 
     // How long a piece rests after landing from a jump (naturally, or via a
     // counter-kill) before it's selectable again - shorter than the regular
