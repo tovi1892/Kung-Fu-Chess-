@@ -66,6 +66,12 @@ public:
     int cooldownMs() const { return cooldownMs_; }
     int airborneMs() const { return airborneMs_; }
 
+    // Remaining post-move cooldown for one piece, in ms; 0 if it isn't
+    // currently on cooldown. Lets GameEngine::getRenderState surface real
+    // cooldown progress to the UI without exposing the CooldownEntry
+    // bookkeeping this class keeps privately.
+    int cooldownRemainingMs(uintptr_t pieceId) const;
+
 private:
     struct CooldownEntry {
         uintptr_t pieceId;

@@ -14,8 +14,15 @@ struct RenderPiece {
     // Real-valued coordinates in board-space or pixels depending on mapping
     double x = 0.0;
     double y = 0.0;
-    // Remaining cooldown in milliseconds
+    // Remaining post-move cooldown, in ms - 0 unless state is Cooldown.
+    // Meaningless (0) while moving: a view has no need for a travel-time
+    // countdown, only for how long until the piece is selectable again.
     double cooldownMs = 0.0;
+    // The full cooldown duration this piece started with (0 unless state is
+    // Cooldown) - paired with cooldownMs so a view can compute a progress
+    // fraction (e.g. for a fill/wipe indicator) without needing to know
+    // GameConfig's base cooldown or the game's speed multiplier itself.
+    double cooldownTotalMs = 0.0;
     // Current state (idle, moving, airborne)
     int state = 0;
 };

@@ -54,6 +54,15 @@ public:
     Img& draw_rect_outline(int x, int y, int w, int h, const cv::Scalar& color, int thickness = 2);
 
     /**
+     * Draw a circular arc (a portion of a circle's outline) directly onto
+     * this image - used for radial progress indicators (e.g. a cooldown
+     * meter). Angles are in degrees, measured clockwise from 3 o'clock,
+     * matching cv::ellipse's own convention (so -90 is 12 o'clock).
+     */
+    Img& draw_arc(int centerX, int centerY, int radius, double startAngleDeg, double endAngleDeg,
+                   const cv::Scalar& color, int thickness = 3);
+
+    /**
      * Draw this image onto another image at position (x, y)
      * 
      * @param other_img The target image to draw on

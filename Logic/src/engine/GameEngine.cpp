@@ -119,31 +119,31 @@ std::vector<RenderPiece> GameEngine::getRenderState() const {
     }
 
     for (auto& rp : render) {
-        // default cooldown
         rp.cooldownMs = 0.0;
+        rp.cooldownTotalMs = 0.0;
 
-        auto it = map.find(rp.id);
-        if (it == map.end()) continue;
-        const PendingMove& pm = it->second;
+        if (auto it = map.find(rp.id); it != map.end()) {
+            // Mid-move: interpolate position. No cooldown data while moving
+            // - a view has nothing meaningful to show for "time to arrival".
+            const PendingMove& pm = it->second;
 
-        // Compute interpolation between pm.currentPos and next step/target
-        double totalDuration = std::max(1, pm.arrivalTimeMs - pm.startTimeMs);
-        double elapsed = std::clamp(now - pm.startTimeMs, 0, pm.arrivalTimeMs - pm.startTimeMs);
+            double totalDuration = std::max(1, pm.arrivalTimeMs - pm.startTimeMs);
+            double elapsed = std::clamp(now - pm.startTimeMs, 0, pm.arrivalTimeMs - pm.startTimeMs);
+            double t = totalDuration > 0 ? (elapsed / totalDuration) : 1.0;
 
-        // linear interpolation from start->to over totalDuration
-        double t = totalDuration > 0 ? (elapsed / totalDuration) : 1.0;
+            double sx = pm.from.row();
+            double sy = pm.from.col();
+            double ex = pm.to.row();
+            double ey = pm.to.col();
 
-        double sx = pm.from.row();
-        double sy = pm.from.col();
-        double ex = pm.to.row();
-        double ey = pm.to.col();
-
-        rp.x = sx + (ex - sx) * t;
-        rp.y = sy + (ey - sy) * t;
-
-        // cooldown: time until arrival
-        int remaining = pm.arrivalTimeMs - now;
-        rp.cooldownMs = remaining > 0 ? static_cast<double>(remaining) : 0.0;
+            rp.x = sx + (ex - sx) * t;
+            rp.y = sy + (ey - sy) * t;
+        } else if (static_cast<PieceState>(rp.state) == PieceState::Cooldown) {
+            // Not moving, but on cooldown: surface real remaining/total
+            // cooldown so a view can draw a progress indicator.
+            rp.cooldownMs = static_cast<double>(arbiter_->cooldownRemainingMs(rp.id));
+            rp.cooldownTotalMs = static_cast<double>(arbiter_->cooldownMs());
+        }
     }
 
     return render;

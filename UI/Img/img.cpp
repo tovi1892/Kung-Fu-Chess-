@@ -56,6 +56,16 @@ Img& Img::draw_rect_outline(int x, int y, int w, int h, const cv::Scalar& color,
     return *this;
 }
 
+Img& Img::draw_arc(int centerX, int centerY, int radius, double startAngleDeg, double endAngleDeg,
+                    const cv::Scalar& color, int thickness) {
+    if (img.empty()) {
+        throw std::runtime_error("Image not loaded.");
+    }
+    cv::ellipse(img, cv::Point(centerX, centerY), cv::Size(radius, radius), 0.0,
+                startAngleDeg, endAngleDeg, color, thickness, cv::LINE_AA);
+    return *this;
+}
+
 Img& Img::keyOutNearWhite(int threshold) {
     if (img.empty()) {
         return *this;

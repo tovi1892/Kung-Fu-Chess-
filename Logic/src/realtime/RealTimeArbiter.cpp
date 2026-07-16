@@ -66,6 +66,15 @@ void RealTimeArbiter::setPremove(uintptr_t pieceId, const Position& to) {
     premoves_[pieceId] = to;
 }
 
+int RealTimeArbiter::cooldownRemainingMs(uintptr_t pieceId) const {
+    for (const auto& entry : cooldowns_) {
+        if (entry.pieceId == pieceId) {
+            return std::max(0, entry.endTimeMs - currentTimeMs_);
+        }
+    }
+    return 0;
+}
+
 void RealTimeArbiter::beginAirborne(uintptr_t pieceId) {
     airborneEntries_.push_back({pieceId, currentTimeMs_ + airborneMs_});
 }

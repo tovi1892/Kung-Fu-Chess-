@@ -1,6 +1,6 @@
 #include "OpenCvView.hpp"
 
-#include <sstream>
+#include <algorithm>
 
 #include "model/GameConfig.hpp"
 
@@ -55,6 +55,35 @@ void drawCellOutline(Img& frame, const CoordinateMapper& mapper, int row, int co
     frame.draw_rect_outline(mapper.cellTopLeftX(col), mapper.cellTopLeftY(row),
                              mapper.cellWidth(), mapper.cellHeight(), color, 3);
 }
+
+cv::Scalar lerpColor(const cv::Scalar& from, const cv::Scalar& to, double t) {
+    return cv::Scalar(from[0] + (to[0] - from[0]) * t,
+                       from[1] + (to[1] - from[1]) * t,
+                       from[2] + (to[2] - from[2]) * t);
+}
+
+// A radial "charging up" meter for a piece's post-move cooldown: a dim track
+// ring plus a brighter arc that sweeps clockwise from 12 o'clock as the
+// cooldown elapses (empty right after landing, a full ring once selectable
+// again), colored from rust to gold so it reads as "warming up" rather than
+// alarming - deliberately distinct from the white selection / green
+// last-move outlines so the three highlights never get visually confused.
+void drawCooldownRing(Img& frame, const CoordinateMapper& mapper, int cellPx, int cellPy,
+                       double remainingMs, double totalMs) {
+    static const cv::Scalar kTrackColor(70, 70, 70);
+    static const cv::Scalar kStartColor(20, 90, 170);    // rust - just landed, long wait ahead
+    static const cv::Scalar kReadyColor(40, 210, 255);   // gold - about to become selectable
+
+    const double fraction = std::clamp(1.0 - (remainingMs / totalMs), 0.0, 1.0);
+    const int radius = std::min(mapper.cellWidth(), mapper.cellHeight()) / 2 - 4;
+    const int centerX = cellPx + mapper.cellWidth() / 2;
+    const int centerY = cellPy + mapper.cellHeight() / 2;
+
+    frame.draw_arc(centerX, centerY, radius, 0.0, 360.0, kTrackColor, 3);
+
+    const double endAngleDeg = -90.0 + fraction * 360.0;
+    frame.draw_arc(centerX, centerY, radius, -90.0, endAngleDeg, lerpColor(kStartColor, kReadyColor, fraction), 4);
+}
 }  // namespace
 
 void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighlight& highlight) {
@@ -91,10 +120,8 @@ void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighl
         const int frameIndex = animator_.frameIndexFor(rp.id, pieceState, sequence);
         sequence.frames[frameIndex].draw_on(frame, px, py);
 
-        if (rp.cooldownMs > 0) {
-            std::ostringstream ss;
-            ss << static_cast<int>(rp.cooldownMs);
-            frame.put_text(ss.str(), px + 4, py + 16, 0.4, cv::Scalar(0, 0, 255, 255), 1);
+        if (rp.cooldownMs > 0 && rp.cooldownTotalMs > 0) {
+            drawCooldownRing(frame, mapper_, px, py, rp.cooldownMs, rp.cooldownTotalMs);
         }
     }
 
