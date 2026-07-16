@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 #include "model/IBoard.hpp"
-#include "model/GameState.hpp"
+#include "model/Enums.hpp"
 #include "model/Position.hpp"
 #include "movement/MovementSystem.hpp"
 #include "model/pieces/Piece.hpp"
