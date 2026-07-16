@@ -12,8 +12,9 @@ struct GameConfig {
     // Fixed pixel size of one board cell, and the speed a piece travels at
     // (1x game speed). kMsPerCell is the time it takes to cross one cell -
     // the base unit RealTimeArbiter builds all of its move timing from.
+    // (~700ms at 1x speed.)
     static constexpr int kCellSizePx = 100;
-    static constexpr int kPieceSpeedPxPerSec = 100;
+    static constexpr int kPieceSpeedPxPerSec = 143;
     static constexpr int kMsPerCell = 1000 * kCellSizePx / kPieceSpeedPxPerSec;
 
     // How long a piece stays on cooldown after arriving from a move, before
@@ -25,8 +26,9 @@ struct GameConfig {
     // mechanic) before landing back to Idle on its own. Scales with
     // speedMultiplier too. Chosen to comfortably outlast a knight's fixed
     // 2-cell (2 * kMsPerCell) approach, so a jump can dodge a knight attack
-    // and not just an adjacent sliding piece.
-    static constexpr int kBaseAirborneMs = 2000;
+    // and not just an adjacent sliding piece - while still being short
+    // enough that a jump is a real gamble, not a near-guaranteed dodge.
+    static constexpr int kBaseAirborneMs = 1500;
 
     // Pawn start rows (the row a pawn sits on at game start).
     static constexpr int kWhitePawnStartRow = 1;

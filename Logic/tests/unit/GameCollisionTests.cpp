@@ -19,10 +19,11 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
 
     SECTION("Two enemy pieces converging mid-flight: whichever one enters the occupied square wins") {
         // Two rooks converge on (0,2), which is neither one's own final
-        // destination. White reaches (0,2) first (at t=2000) and just sits
-        // there mid-slide; Black's step into (0,2) at t=2500 is the one that
-        // discovers the square occupied - Black wins and stops right there,
-        // even though White started moving first (t=0 vs t=500).
+        // destination. White (starting first) reaches (0,2) at its 2nd step
+        // and just sits there mid-slide; Black - started kMsPerCell/2 later -
+        // reaches (0,2) partway through White's residency there, so it's
+        // Black's step that discovers the square occupied. Black wins and
+        // stops right there, even though White started moving first.
         auto board = std::make_shared<Board>();
         GameEngine game(board);
         game.start();
@@ -39,9 +40,9 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
         REQUIRE(game.requestMove(Position(0, 0), Position(0, 4)).is_accepted);
-        game.wait(500);
+        game.wait(GameConfig::kMsPerCell / 2);
         REQUIRE(game.requestMove(Position(0, 4), Position(0, 0)).is_accepted);
-        game.wait(2000);  // t=2500: the collision resolves
+        game.wait(2 * GameConfig::kMsPerCell);  // the collision resolves
 
         auto pieceAt = board->pieceAt(Position(0, 2));
         REQUIRE(pieceAt.has_value());

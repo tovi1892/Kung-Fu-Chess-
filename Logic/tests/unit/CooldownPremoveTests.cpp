@@ -3,6 +3,7 @@
 
 #include "engine/GameEngine.hpp"
 #include "model/Board.hpp"
+#include "model/GameConfig.hpp"
 #include "model/pieces/King.hpp"
 #include "model/pieces/Rook.hpp"
 
@@ -31,13 +32,13 @@ TEST_CASE("A piece enters cooldown on arrival and returns to Idle once it elapse
     game.start();
 
     REQUIRE(game.requestMove(Position(0, 0), Position(0, 1)).is_accepted);
-    game.wait(1000);  // distance 1 * kMsPerCell(1000) - arrival
+    game.wait(GameConfig::kMsPerCell);  // distance 1 - arrival
 
     auto arrived = board->pieceAt(Position(0, 1));
     REQUIRE(arrived.has_value());
     CHECK((*arrived)->state() == PieceState::Cooldown);
 
-    game.wait(999);  // kBaseCooldownMs(1000) - 1ms: not quite there yet
+    game.wait(GameConfig::kBaseCooldownMs - 1);  // not quite there yet
     CHECK((*arrived)->state() == PieceState::Cooldown);
 
     game.wait(1);  // the last millisecond of cooldown
@@ -51,7 +52,7 @@ TEST_CASE("Requesting a move for a piece on cooldown queues a premove instead of
     game.start();
 
     REQUIRE(game.requestMove(Position(0, 0), Position(0, 1)).is_accepted);
-    game.wait(1000);  // arrival - now on cooldown
+    game.wait(GameConfig::kMsPerCell);  // arrival - now on cooldown
 
     const auto queued = game.requestMove(Position(0, 1), Position(0, 2));
     REQUIRE(queued.is_accepted);
@@ -71,16 +72,16 @@ TEST_CASE("A premove fires automatically the instant cooldown ends", "[cooldown]
     game.start();
 
     REQUIRE(game.requestMove(Position(0, 0), Position(0, 1)).is_accepted);
-    game.wait(1000);  // arrival at (0,1) - cooldown starts
+    game.wait(GameConfig::kMsPerCell);  // arrival at (0,1) - cooldown starts
 
     REQUIRE(game.requestMove(Position(0, 1), Position(0, 2)).is_accepted);
 
-    game.wait(1000);  // cooldown elapses; the queued premove should start now
+    game.wait(GameConfig::kBaseCooldownMs);  // cooldown elapses; the queued premove should start now
     auto midFlight = board->pieceAt(Position(0, 1));
     REQUIRE(midFlight.has_value());
     CHECK((*midFlight)->state() == PieceState::Moving);
 
-    game.wait(1000);  // the premove's own travel time (distance 1)
+    game.wait(GameConfig::kMsPerCell);  // the premove's own travel time (distance 1)
     REQUIRE(board->pieceAt(Position(0, 1)).has_value() == false);
     auto finalPos = board->pieceAt(Position(0, 2));
     REQUIRE(finalPos.has_value());
@@ -94,7 +95,7 @@ TEST_CASE("A later illegal request cancels a queued premove", "[cooldown][premov
     game.start();
 
     REQUIRE(game.requestMove(Position(0, 0), Position(0, 1)).is_accepted);
-    game.wait(1000);  // arrival - cooldown starts
+    game.wait(GameConfig::kMsPerCell);  // arrival - cooldown starts
 
     REQUIRE(game.requestMove(Position(0, 1), Position(0, 2)).is_accepted);  // legitimate premove
     // Overwrite it with a request that will fail validation once cooldown
@@ -102,8 +103,8 @@ TEST_CASE("A later illegal request cancels a queued premove", "[cooldown][premov
     // documented way to cancel a premove.
     REQUIRE(game.requestMove(Position(0, 1), Position(5, 5)).is_accepted);  // still just "queued", not validated yet
 
-    game.wait(1000);   // cooldown ends - the (now-overwritten) premove is validated and discarded
-    game.wait(2000);   // plenty of time for a move to have happened, if one had started
+    game.wait(GameConfig::kBaseCooldownMs);   // cooldown ends - the (now-overwritten) premove is validated and discarded
+    game.wait(2 * GameConfig::kMsPerCell);    // plenty of time for a move to have happened, if one had started
 
     auto stillThere = board->pieceAt(Position(0, 1));
     REQUIRE(stillThere.has_value());
@@ -120,12 +121,12 @@ TEST_CASE("Game speed scales both movement time and cooldown duration", "[cooldo
     game.start();
 
     REQUIRE(game.requestMove(Position(0, 0), Position(0, 1)).is_accepted);
-    game.wait(500);  // half of the default 1000ms per cell
+    game.wait(GameConfig::kMsPerCell / 2);  // half of the default time per cell
 
     auto arrived = board->pieceAt(Position(0, 1));
     REQUIRE(arrived.has_value());
     CHECK((*arrived)->state() == PieceState::Cooldown);
 
-    game.wait(500);  // half of the default 1000ms cooldown
+    game.wait(GameConfig::kBaseCooldownMs / 2);  // half of the default cooldown
     CHECK((*arrived)->state() == PieceState::Idle);
 }
