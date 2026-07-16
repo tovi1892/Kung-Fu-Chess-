@@ -28,6 +28,16 @@ struct PendingMove {
     uintptr_t pieceId = 0;     // non-owning identifier for which piece this move belongs to
 };
 
+// One piece being removed from the board as a genuine capture (as opposed
+// to just repositioning, or a friendly block) - who gets credit and what
+// was eliminated. Recorded during advanceTime; GameEngine drains these
+// after each wait() to update score/history, so RealTimeArbiter itself
+// never needs to know anything about scoring.
+struct CaptureEvent {
+    PlayerColor capturingColor;
+    PieceType capturedType;
+};
+
 class RealTimeArbiter {
 public:
     // speedMultiplier scales both movement speed and post-move cooldown
@@ -79,6 +89,10 @@ public:
     // landing from a jump (see PieceState::ShortRest).
     int shortRestRemainingMs(uintptr_t pieceId) const;
 
+    // Returns every capture recorded since the last call, then clears the
+    // list - a one-shot drain, meant to be called once per GameEngine::wait().
+    std::vector<CaptureEvent> drainCaptureEvents();
+
 private:
     // A piece-id + expiry-time pair, shared by every "this piece is
     // temporarily unavailable, and may have a premove queued" timer this
@@ -101,6 +115,7 @@ private:
     // piece: the jumper is immune, so it lands into a short rest and the
     // attacker is removed instead of the usual capture-and-advance.
     void resolveAirborneCounterKill(PendingMove& pm, Piece* attacker, Piece* airbornePiece);
+    void recordCapture(PlayerColor capturingColor, PieceType capturedType);
 
     std::shared_ptr<IBoard> board_;
     std::shared_ptr<IRuleEngine> ruleEngine_;
@@ -113,6 +128,7 @@ private:
     std::vector<TimerEntry> airborneEntries_;
     std::vector<TimerEntry> shortRestEntries_;
     std::unordered_map<uintptr_t, Position> premoves_;
+    std::vector<CaptureEvent> captureEvents_;
     int currentTimeMs_ = 0;
     bool kingCaptured_ = false;
 };

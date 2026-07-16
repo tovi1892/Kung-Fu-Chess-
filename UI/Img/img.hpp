@@ -91,7 +91,14 @@ public:
     void put_text(const std::string& txt, int x, int y, double font_size,
                   const cv::Scalar& color = cv::Scalar(255, 255, 255, 255),
                   int thickness = 1);
-    
+
+    /**
+     * Pixel width `txt` would occupy if drawn with put_text at the given
+     * font_size/thickness - for centering text without drawing it first.
+     * Doesn't require an image to be loaded (pure text metrics).
+     */
+    int text_width(const std::string& txt, double font_size, int thickness = 1) const;
+
     /**
      * Display the image in a window
      */

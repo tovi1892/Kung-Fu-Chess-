@@ -56,8 +56,10 @@ The project is split into three layers with a strict dependency direction: `UI` 
 
 - **`Core_Interfaces/`** — the abstraction boundary that keeps the UI swappable. `IGameView` (render, isOpen,
   setInputHandler) and `IInputHandler` (handleClick, pollEvent) are the only things `main.cpp`/`Logic` should know
-  about a concrete UI backend. `RenderPiece` (declared in `IGameView.hpp`) is the lightweight snapshot struct passed
-  from `Logic` to any view implementation.
+  about a concrete UI backend. `RenderPiece`, `BoardHighlight`, and `Scoreboard`/`PlayerPanel`/`MoveEntry` (all
+  declared in `IGameView.hpp`) are the plain-data snapshot structs passed from `Logic`/`main.cpp` to any view
+  implementation each frame — pieces, selection/last-move highlighting, and the two side panels' name/score/move-list
+  contents, respectively. None of them reference a Logic model type.
 - **`Logic/`** — the engine, built as the `kungfu_engine` static library. The folder layout under `include/`/`src/`
   mirrors the course's layer boundaries; each layer is testable without the layers above it, and dependencies only
   point downward (`input` → `engine` → `rules`/`realtime` → `model`; `io`/`texttests` sit alongside and depend on
@@ -109,11 +111,19 @@ The project is split into three layers with a strict dependency direction: `UI` 
     `Controller` → `GameEngine::wait` → `BoardPrinter`, the same path a real UI would use. Never touches `Board` or
     `GameEngine` internals directly — see `Logic/tests/integration/GameIntegrationTests.cpp` for the script-driven
     integration test suite.
+  - `history/` (`GameRecord`) — per-color move history and score, plus the free `moveNotation`/`pieceValue`
+    functions. `GameEngine` owns one instance: `requestMove` records a move's notation the moment it's accepted, and
+    `wait` drains `RealTimeArbiter::CaptureEvent`s (pushed wherever a genuine capture happens - static, dynamic,
+    knight-landing, or airborne counter-kill) to update score. Exposed read-only via `GameEngine::gameRecord()`.
 - **`UI/`** — the only OpenCV-dependent code. `UI_OpenCV/OpenCvView` implements `IGameView` using `Img` (a small
-  `cv::Mat` wrapper in `UI/Img/`), `AssetManager` (loads/caches each piece's idle sprite from
-  `UI/assets/pieces1/<Kind><Color>/states/idle/sprites/1.png`), and `CoordinateMapper` (pixel↔cell conversion for
-  the actual windowed app — distinct from `Controller`'s fixed-`CELL_SIZE` mapping, since the real window can be a
-  different size than the `CELL_SIZE=100` convention the DSL/tests assume).
+  `cv::Mat` wrapper in `UI/Img/`), `AssetManager` (loads/caches each piece's per-state sprite sequences from
+  `UI/assets/pieces_classic/<Kind><Color>/states/<idle|move|jump|long_rest|short_rest>/`), and `CoordinateMapper`
+  (pixel↔cell conversion for the actual windowed app, now with an `offsetX`/`offsetY` so the board can sit to the
+  right of a side panel — distinct from `Controller`'s fixed-`CELL_SIZE` mapping, since the real window can be a
+  different size than the `CELL_SIZE=100` convention the DSL/tests assume). The window is drawn entirely from code
+  (checkerboard, a-h/1-8 labels, and both name/score/move-list side panels) - no background image file is involved.
+  `main.cpp` gets its `CoordinateMapper` from `OpenCvView::mapper()` rather than constructing a second one, so the
+  board's on-screen position (and its side-panel offset) can't drift out of sync between drawing and click handling.
 
 ### Non-obvious invariants
 
@@ -125,6 +135,6 @@ The project is split into three layers with a strict dependency direction: `UI` 
   `CMakeLists.txt` (not their parent). Headers under them must be included by their bare relative path from that
   root (e.g. `#include "IGameView.hpp"`, not `#include "Core_Interfaces/IGameView.hpp"`) — the reverse form only
   happens to resolve in some files by accident, via `-I` flag cancellation, and shouldn't be relied on or copied.
-- **Frame drawing**: `OpenCvView` loads `board.png` once and clones it (`Img::clone()`) every frame before drawing
-  pieces — drawing directly on the cached image would permanently smear pieces across frames since `cv::Mat` copies
-  are shallow by default.
+- **Frame drawing**: `OpenCvView` builds its static background (board + labels + panel chrome) once and clones it
+  (`Img::clone()`) every frame before drawing pieces/panels/highlights — drawing directly on the cached image would
+  permanently smear frame contents across subsequent frames since `cv::Mat` copies are shallow by default.

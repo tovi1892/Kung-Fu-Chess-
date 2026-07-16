@@ -95,8 +95,19 @@ void RealTimeArbiter::beginAirborne(uintptr_t pieceId) {
     airborneEntries_.push_back({pieceId, currentTimeMs_ + airborneMs_});
 }
 
+void RealTimeArbiter::recordCapture(PlayerColor capturingColor, PieceType capturedType) {
+    captureEvents_.push_back({capturingColor, capturedType});
+}
+
+std::vector<CaptureEvent> RealTimeArbiter::drainCaptureEvents() {
+    std::vector<CaptureEvent> events;
+    events.swap(captureEvents_);
+    return events;
+}
+
 void RealTimeArbiter::resolveAirborneCounterKill(PendingMove& pm, Piece* attacker, Piece* airbornePiece) {
     const bool attackerWasKing = (attacker->type() == PieceType::King);
+    recordCapture(airbornePiece->color(), attacker->type());
     board_->removePiece(pm.currentPos);
     pm.active = false;
     beginShortRest(airbornePiece);
@@ -257,6 +268,7 @@ void RealTimeArbiter::advanceTime(int ms) {
                     }
 
                     const bool capturedKing = (target->type() == PieceType::King);
+                    recordCapture(currentPiece->color(), target->type());
                     board_->removePiece(pm.to);
                     board_->movePiece(pm.currentPos, pm.to);
                     pm.currentPos = pm.to;
@@ -308,6 +320,7 @@ void RealTimeArbiter::advanceTime(int ms) {
                             // first. The winner stops right here rather than
                             // continuing toward its own original target.
                             target->setState(PieceState::Captured);
+                            recordCapture(currentPiece->color(), target->type());
                             board_->removePiece(nextPos);
                             otherPm->active = false;
 
@@ -336,6 +349,7 @@ void RealTimeArbiter::advanceTime(int ms) {
                             // Capturing a stationary enemy ends the slide
                             // here, exactly like standard chess.
                             bool capturedKing = (target->type() == PieceType::King);
+                            recordCapture(currentPiece->color(), target->type());
 
                             // Any other pending move that was also racing
                             // toward this now-captured square stops too.

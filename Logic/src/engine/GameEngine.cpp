@@ -62,6 +62,15 @@ MoveResult GameEngine::requestMove(const Position& from, const Position& to) {
         return {false, validation.reason};
     }
 
+    // Recorded from the request itself (from/to/whether 'to' looked like a
+    // capture right now), not wherever real-time resolution actually ends
+    // the move - a simplification, not a full PGN engine.
+    const auto targetPieceOpt = board_->pieceAt(to);
+    const bool isCapture = targetPieceOpt.has_value() && targetPieceOpt.value() != nullptr &&
+                            targetPieceOpt.value()->color() != movingPiece->color();
+    const std::string notation = moveNotation(movingPiece->type(), from, to, isCapture);
+    record_.recordMove(movingPiece->color(), arbiter_->currentTimeMs(), notation);
+
     arbiter_->startMove(from, to, static_cast<uintptr_t>(movingPiece->id()));
     movingPiece->setState(PieceState::Moving);
 
@@ -161,6 +170,10 @@ void GameEngine::wait(int ms) {
     }
 
     arbiter_->advanceTime(ms);
+
+    for (const auto& event : arbiter_->drainCaptureEvents()) {
+        record_.recordCapture(event.capturingColor, event.capturedType);
+    }
 
     if (arbiter_->isKingCaptured()) {
         state_ = GameState::Finished;

@@ -1,28 +1,34 @@
 #include "OpenCvView.hpp"
 
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
 
 #include "model/GameConfig.hpp"
 
 namespace kungfu {
 
-OpenCvView::OpenCvView(int width, int height)
-    : width_(width), height_(height), windowName_("KungFuChess"),
-      mapper_(width, height, GameConfig::kBoardSize, GameConfig::kBoardSize) {}
+OpenCvView::OpenCvView(int boardSize, int sidePanelWidth)
+    : boardSize_(boardSize), sidePanelWidth_(sidePanelWidth),
+      width_(sidePanelWidth_ * 2 + boardSize_), height_(boardSize_),
+      windowName_("KungFuChess"),
+      mapper_(boardSize_, boardSize_, GameConfig::kBoardSize, GameConfig::kBoardSize,
+              CoordinateMapper::kDefaultMargin, sidePanelWidth_, 0) {}
 
 void OpenCvView::init() {
-    drawBoard();
+    drawStaticBackground();
 
     cv::namedWindow(windowName_, cv::WINDOW_AUTOSIZE);
     cv::setMouseCallback(windowName_, &OpenCvView::onMouse, this);
 }
 
-void OpenCvView::drawBoard() {
+void OpenCvView::drawStaticBackground() {
     const int margin = mapper_.margin();
     const int rows = GameConfig::kBoardSize;
     const int cols = GameConfig::kBoardSize;
 
-    boardImg_.create(width_, height_, cv::Scalar(235, 235, 235));
+    static const cv::Scalar kPanelBg(20, 20, 20);
+    boardImg_.create(width_, height_, kPanelBg);
 
     static const cv::Scalar kLightSquare(181, 217, 240);
     static const cv::Scalar kDarkSquare(99, 136, 181);
@@ -35,19 +41,26 @@ void OpenCvView::drawBoard() {
         }
     }
 
-    static const cv::Scalar kLabelColor(60, 60, 60);
+    // Labels sit in the margin around the board, which is part of the same
+    // dark panel background, not the light checkered squares - so they need
+    // a light color to stay readable.
+    static const cv::Scalar kLabelColor(215, 215, 215);
     for (int c = 0; c < cols; ++c) {
         const std::string label(1, static_cast<char>('a' + c));
         const int x = mapper_.cellTopLeftX(c) + mapper_.cellWidth() / 2 - 5;
         boardImg_.put_text(label, x, margin - 12, 0.5, kLabelColor, 1);
-        boardImg_.put_text(label, x, height_ - margin + 24, 0.5, kLabelColor, 1);
+        boardImg_.put_text(label, x, boardSize_ - margin + 24, 0.5, kLabelColor, 1);
     }
     for (int r = 0; r < rows; ++r) {
         const std::string label = std::to_string(rows - r);
         const int y = mapper_.cellTopLeftY(r) + mapper_.cellHeight() / 2 + 5;
-        boardImg_.put_text(label, margin / 2 - 5, y, 0.5, kLabelColor, 1);
-        boardImg_.put_text(label, width_ - margin / 2 - 5, y, 0.5, kLabelColor, 1);
+        boardImg_.put_text(label, sidePanelWidth_ + margin / 2 - 5, y, 0.5, kLabelColor, 1);
+        boardImg_.put_text(label, sidePanelWidth_ + boardSize_ - margin / 2 - 5, y, 0.5, kLabelColor, 1);
     }
+
+    static const cv::Scalar kDividerColor(75, 75, 75);
+    boardImg_.draw_rect(sidePanelWidth_ - 1, 0, 1, height_, kDividerColor);
+    boardImg_.draw_rect(sidePanelWidth_ + boardSize_, 0, 1, height_, kDividerColor);
 }
 
 namespace {
@@ -85,10 +98,72 @@ void drawRestRing(Img& frame, const CoordinateMapper& mapper, int cellPx, int ce
     const double endAngleDeg = -90.0 + fraction * 360.0;
     frame.draw_arc(centerX, centerY, radius, -90.0, endAngleDeg, lerpColor(kStartColor, kReadyColor, fraction), 4);
 }
+
+// mm:ss.mmm, matching the reference layout's TIME column.
+std::string formatElapsed(double elapsedMs) {
+    const int totalMs = static_cast<int>(elapsedMs);
+    const int minutes = totalMs / 60000;
+    const int seconds = (totalMs / 1000) % 60;
+    const int millis = totalMs % 1000;
+
+    std::ostringstream oss;
+    oss << std::setfill('0') << std::setw(2) << minutes << ':'
+        << std::setw(2) << seconds << '.'
+        << std::setw(3) << millis;
+    return oss.str();
+}
+
+// One player's side panel: name + score centered at the top, then a
+// TIME/MOVE move list below. Only as many of the most recent moves as fit
+// in the panel's remaining height are shown, so the latest move is always
+// visible instead of the list silently overflowing off-screen.
+void drawPlayerPanel(Img& frame, const PlayerPanel& panel, int panelX, int panelWidth, int panelHeight) {
+    static const cv::Scalar kNameColor(60, 200, 230);
+    static const cv::Scalar kScoreColor(190, 190, 190);
+    static const cv::Scalar kHeaderColor(225, 225, 225);
+    static const cv::Scalar kMoveColor(205, 205, 205);
+    static const cv::Scalar kDividerColor(90, 90, 90);
+
+    auto centeredX = [&](const std::string& text, double fontSize, int thickness) {
+        const int textWidth = frame.text_width(text, fontSize, thickness);
+        return panelX + std::max(0, (panelWidth - textWidth) / 2);
+    };
+
+    const std::string name = panel.name.empty() ? std::string("Player") : panel.name;
+    frame.put_text(name, centeredX(name, 0.65, 2), 34, 0.65, kNameColor, 2);
+
+    const std::string scoreText = "Score: " + std::to_string(panel.score);
+    frame.put_text(scoreText, centeredX(scoreText, 0.45, 1), 60, 0.45, kScoreColor, 1);
+
+    const int headerY = 95;
+    const int timeColX = panelX + 18;
+    const int moveColX = panelX + panelWidth / 2 + 10;
+    frame.put_text("TIME", timeColX, headerY, 0.42, kHeaderColor, 1);
+    frame.put_text("MOVE", moveColX, headerY, 0.42, kHeaderColor, 1);
+    frame.draw_rect(panelX + 10, headerY + 8, panelWidth - 20, 1, kDividerColor);
+
+    const int rowStartY = headerY + 28;
+    const int rowHeight = 20;
+    const int maxRows = std::max(0, (panelHeight - rowStartY - 12) / rowHeight);
+
+    const int total = static_cast<int>(panel.moves.size());
+    const int startIndex = std::max(0, total - maxRows);
+    int y = rowStartY;
+    for (int i = startIndex; i < total; ++i) {
+        const auto& entry = panel.moves[i];
+        frame.put_text(formatElapsed(entry.elapsedMs), timeColX, y, 0.4, kMoveColor, 1);
+        frame.put_text(entry.notation, moveColX, y, 0.4, kMoveColor, 1);
+        y += rowHeight;
+    }
+}
 }  // namespace
 
-void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighlight& highlight) {
+void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighlight& highlight,
+                         const Scoreboard& scoreboard) {
     Img frame = boardImg_.clone();
+
+    drawPlayerPanel(frame, scoreboard.black, 0, sidePanelWidth_, height_);
+    drawPlayerPanel(frame, scoreboard.white, sidePanelWidth_ + boardSize_, sidePanelWidth_, height_);
 
     static const cv::Scalar kSelectionColor(255, 255, 255);   // white - the square currently selected
     static const cv::Scalar kLastMoveColor(80, 220, 80);      // green - the last move's from/to squares

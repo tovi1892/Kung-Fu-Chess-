@@ -10,23 +10,36 @@
 namespace kungfu {
 
 // The only IGameView implementation: an OpenCV window. See IGameView for
-// what each overridden method does.
+// what each overridden method does. The window is laid out as [left side
+// panel][board][right side panel]; boardSize is the board's own square
+// extent, sidePanelWidth each panel's width.
 class OpenCvView : public IGameView {
 public:
-    OpenCvView(int width = 800, int height = 800);
+    OpenCvView(int boardSize = 800, int sidePanelWidth = 260);
     ~OpenCvView() override = default;
 
     void init() override;
-    void render(const std::vector<kungfu::RenderPiece>& pieces, const BoardHighlight& highlight) override;
+    void render(const std::vector<kungfu::RenderPiece>& pieces, const BoardHighlight& highlight,
+                const Scoreboard& scoreboard) override;
     bool isOpen() const override;
     void setInputHandler(IInputHandlerPtr handler) override;
 
+    // Read-only access to the pixel<->cell mapper this view uses internally,
+    // so the composition root (main.cpp) can translate raw mouse clicks into
+    // board cells without constructing (and having to keep in sync) a
+    // second, separate CoordinateMapper.
+    const CoordinateMapper& mapper() const { return mapper_; }
+
 private:
     static void onMouse(int event, int x, int y, int flags, void* userdata);
-    // Renders the checkerboard + a-h/1-8 coordinate labels into boardImg_
-    // once, from code - no background image file is involved.
-    void drawBoard();
+    // Renders the checkerboard + a-h/1-8 coordinate labels + panel
+    // background/dividers into boardImg_ once, from code - no background
+    // image file is involved. Player name/score/move-list content is
+    // dynamic and drawn fresh every render() call instead.
+    void drawStaticBackground();
 
+    int boardSize_;
+    int sidePanelWidth_;
     int width_;
     int height_;
     std::string windowName_;

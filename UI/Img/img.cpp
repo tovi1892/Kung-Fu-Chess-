@@ -158,6 +158,12 @@ void Img::put_text(const std::string& txt, int x, int y, double font_size,
                 color, thickness, cv::LINE_AA);
 }
 
+int Img::text_width(const std::string& txt, double font_size, int thickness) const {
+    int baseline = 0;
+    const cv::Size size = cv::getTextSize(txt, cv::FONT_HERSHEY_SIMPLEX, font_size, thickness, &baseline);
+    return size.width;
+}
+
 Img Img::clone() const {
     Img copy;
     copy.img = img.clone();

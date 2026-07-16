@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 #include <vector>
 #include <memory>
 #include "IInputHandler.hpp"
@@ -42,6 +43,30 @@ struct BoardHighlight {
     int lastMoveToRow = 0;
     int lastMoveToCol = 0;
 };
+
+// One entry in a player's move list: when it happened (elapsed game time,
+// ms) and its notation (e.g. "e5", "Nxe5"). Plain data, mirrors
+// history::MoveRecord without pulling a Logic header across the boundary.
+struct MoveEntry {
+    double elapsedMs = 0.0;
+    std::string notation;
+};
+
+// One player's side-panel contents: name, running score, and move list in
+// play order (oldest first) - a view decides for itself how many of the
+// most recent entries actually fit on screen.
+struct PlayerPanel {
+    std::string name;
+    int score = 0;
+    std::vector<MoveEntry> moves;
+};
+
+// Both players' panel contents for one frame - purely a presentation
+// concern (name/score/move-list display), carries no gameplay meaning.
+struct Scoreboard {
+    PlayerPanel white;
+    PlayerPanel black;
+};
 } // namespace kungfu
 
 class IGameView {
@@ -53,7 +78,8 @@ public:
 
     // Render current frame. `pieces` are in logical coordinates.
     virtual void render(const std::vector<kungfu::RenderPiece>& pieces,
-                         const kungfu::BoardHighlight& highlight) = 0;
+                         const kungfu::BoardHighlight& highlight,
+                         const kungfu::Scoreboard& scoreboard) = 0;
 
     // False once the window has been closed - the signal that ends the caller's render loop.
     virtual bool isOpen() const = 0;

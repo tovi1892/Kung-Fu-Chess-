@@ -17,8 +17,7 @@ std::string readFile(const std::string& path) {
 }
 
 // Minimal, schema-specific field extraction for config.json - not a general
-// JSON parser (the project may only depend on OpenCV beyond the standard
-// library), just enough to read the two fields under "graphics" that every
+// JSON parser , just enough to read the two fields under "graphics" that every
 // state's config.json is known to have: frames_per_sec and is_loop.
 double extractNumberField(const std::string& json, const std::string& key) {
     auto pos = json.find("\"" + key + "\"");

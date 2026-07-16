@@ -11,6 +11,7 @@
 #include "model/pieces/Piece.hpp"
 #include "rules/IRuleEngine.hpp"
 #include "realtime/RealTimeArbiter.hpp"
+#include "history/GameRecord.hpp"
 
 // Forward-declare render struct from Core_Interfaces to avoid direct header dependency
 namespace kungfu { struct RenderPiece; }
@@ -113,11 +114,16 @@ public:
     int boardRows() const;
     int boardCols() const;
 
+    // The running move history and score for both colors, built up as moves
+    // are accepted and captures resolve. See history/GameRecord.hpp.
+    const GameRecord& gameRecord() const { return record_; }
+
 private:
     GameState state_;
     std::shared_ptr<IBoard> board_;
     std::shared_ptr<IRuleEngine> ruleEngine_;
     MovementSystem movementSystem_;
+    GameRecord record_;
 
     // All real-time move/cooldown/airborne timing is delegated to the Arbiter.
     std::unique_ptr<RealTimeArbiter> arbiter_;

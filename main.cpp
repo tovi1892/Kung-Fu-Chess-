@@ -6,7 +6,6 @@
 
 #include "io/BoardParser.hpp"
 #include "model/Board.hpp"
-#include "model/GameConfig.hpp"
 #include "engine/GameEngine.hpp"
 #include "input/Controller.hpp"
 #include "rules/RuleEngine.hpp"
@@ -84,6 +83,27 @@ private:
     std::chrono::steady_clock::time_point lastMoveAt_;
 };
 
+// Builds this frame's side-panel data from GameEngine's running GameRecord.
+// Player 1 is White (right panel), Player 2 is Black (left panel), matching
+// the reference layout.
+Scoreboard buildScoreboard(const GameEngine& game) {
+    Scoreboard scoreboard;
+    scoreboard.white.name = "white";
+    scoreboard.black.name = "black";
+
+    const auto& record = game.gameRecord();
+    scoreboard.white.score = record.scoreFor(PlayerColor::White);
+    scoreboard.black.score = record.scoreFor(PlayerColor::Black);
+
+    for (const auto& move : record.movesFor(PlayerColor::White)) {
+        scoreboard.white.moves.push_back({static_cast<double>(move.elapsedMs), move.notation});
+    }
+    for (const auto& move : record.movesFor(PlayerColor::Black)) {
+        scoreboard.black.moves.push_back({static_cast<double>(move.elapsedMs), move.notation});
+    }
+    return scoreboard;
+}
+
 }  // namespace
 
 int main() {
@@ -101,10 +121,14 @@ int main() {
     auto controller = std::make_shared<Controller>(game);
 
     const int windowSize = 800;
-    CoordinateMapper mapper(windowSize, windowSize, GameConfig::kBoardSize, GameConfig::kBoardSize);
-    auto clickHandler = std::make_shared<BoardClickHandler>(*controller, mapper);
+    const int sidePanelWidth = 260;
+    OpenCvView view(windowSize, sidePanelWidth);
 
-    OpenCvView view(windowSize, windowSize);
+    // The click handler shares the view's own mapper (via the read-only
+    // accessor) rather than constructing a second, separate one - so the
+    // board's on-screen position (now offset by the left side panel) can
+    // never drift out of sync between drawing and click handling.
+    auto clickHandler = std::make_shared<BoardClickHandler>(*controller, view.mapper());
     view.setInputHandler(clickHandler);
     view.init();
 
@@ -125,7 +149,7 @@ int main() {
             highlight.lastMoveToCol = recent->second.col();
         }
 
-        view.render(game->getRenderState(), highlight);
+        view.render(game->getRenderState(), highlight, buildScoreboard(*game));
     }
 
     return 0;
