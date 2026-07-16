@@ -17,7 +17,7 @@ namespace kungfu { struct RenderPiece; }
 
 namespace kungfu {
 
-// Application-service result for a move request (course spec section 9).
+// Application-service result for a move request 
 // reason is always present: "ok" for an accepted move, "game_over" when the
 // game has already ended, or a rule-level reason copied from MoveValidation.
 struct MoveResult {

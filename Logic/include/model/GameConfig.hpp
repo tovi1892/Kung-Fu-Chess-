@@ -11,15 +11,9 @@ struct GameConfig {
     static constexpr int kPieceSpeedPxPerSec = 100;
     static constexpr int kMsPerCell = 1000 * kCellSizePx / kPieceSpeedPxPerSec;
 
-    // Base cooldown after a piece finishes a move, before it is selectable
-    // again. Scales with RealTimeArbiter's speedMultiplier, same as kMsPerCell.
-    static constexpr int kBaseCooldownMs = 1000;
+    static constexpr int kBaseCooldownMs = 1500;
 
-    // How long a piece stays airborne after jumping (experimental "jump"
-    // mechanic) before landing back to Idle on its own. Scales with
-    // RealTimeArbiter's speedMultiplier, same as kBaseCooldownMs. Chosen to
-    // comfortably cover a knight's fixed 2-cell (2 * kMsPerCell) approach, so
-    // a jump can dodge a knight attack and not just adjacent sliding pieces.
+ 
     static constexpr int kBaseAirborneMs = 2000;
 
     // Pawn start rows (the row a pawn sits on at game start).
