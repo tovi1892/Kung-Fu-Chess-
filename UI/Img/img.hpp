@@ -47,6 +47,13 @@ public:
     Img& draw_rect(int x, int y, int w, int h, const cv::Scalar& color);
 
     /**
+     * Draw an unfilled rectangle outline (a thin frame) directly onto this
+     * image - used for square highlights, where draw_rect's solid fill
+     * would hide whatever is drawn on the square.
+     */
+    Img& draw_rect_outline(int x, int y, int w, int h, const cv::Scalar& color, int thickness = 2);
+
+    /**
      * Draw this image onto another image at position (x, y)
      * 
      * @param other_img The target image to draw on

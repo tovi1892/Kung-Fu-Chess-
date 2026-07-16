@@ -1,5 +1,7 @@
+#include <chrono>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
 
 #include "io/BoardParser.hpp"
@@ -30,7 +32,16 @@ bP bP bP bP bP bP bP bP
 bR bN bB bQ bK bB bN bR
 )";
 
-// Translates raw pixel clicks from the view into board-cell clicks on the controller.
+// How long the last-move highlight stays visible after a move/jump fires.
+// Purely cosmetic, so it lives here rather than in Controller (which only
+// owns selection state) or GameEngine (which has no concept of "recent").
+constexpr std::chrono::milliseconds kLastMoveHighlightDuration{1000};
+
+// Translates raw pixel clicks from the view into board-cell clicks on the
+// controller, and separately remembers the most recent accepted move/jump
+// purely so main()'s render loop can show a brief "these are the squares
+// that just moved" highlight - a presentation concern with no effect on
+// gameplay, so it's tracked here instead of inside Controller or GameEngine.
 class BoardClickHandler : public IInputHandler {
 public:
     BoardClickHandler(Controller& controller, CoordinateMapper mapper)
@@ -38,14 +49,39 @@ public:
 
     void handleClick(int x, int y) override {
         const Position cell = mapper_.pixelToCell(x, y);
-        controller_.handleCellClick(cell.row(), cell.col());
+        const auto from = controller_.selectedPosition();
+
+        const bool accepted = controller_.handleCellClick(cell.row(), cell.col());
+
+        if (accepted && from.has_value()) {
+            lastMoveFrom_ = *from;
+            lastMoveTo_ = cell;
+            lastMoveAt_ = std::chrono::steady_clock::now();
+        }
     }
 
     std::optional<int> pollEvent() override { return std::nullopt; }
 
+    // Only returns a value while the most recent move/jump is still fresh
+    // (see kLastMoveHighlightDuration) - main() treats "no value" as
+    // "nothing to highlight".
+    std::optional<std::pair<Position, Position>> recentMove() const {
+        if (!lastMoveFrom_.has_value()) {
+            return std::nullopt;
+        }
+        const auto elapsed = std::chrono::steady_clock::now() - lastMoveAt_;
+        if (elapsed > kLastMoveHighlightDuration) {
+            return std::nullopt;
+        }
+        return std::make_pair(*lastMoveFrom_, *lastMoveTo_);
+    }
+
 private:
     Controller& controller_;
     CoordinateMapper mapper_;
+    std::optional<Position> lastMoveFrom_;
+    std::optional<Position> lastMoveTo_;
+    std::chrono::steady_clock::time_point lastMoveAt_;
 };
 
 }  // namespace
@@ -74,7 +110,22 @@ int main() {
 
     while (view.isOpen()) {
         controller->handleTimePassed(16);
-        view.render(game->getRenderState());
+
+        BoardHighlight highlight;
+        if (const auto selected = controller->selectedPosition(); selected.has_value()) {
+            highlight.hasSelection = true;
+            highlight.selectedRow = selected->row();
+            highlight.selectedCol = selected->col();
+        }
+        if (const auto recent = clickHandler->recentMove(); recent.has_value()) {
+            highlight.hasLastMove = true;
+            highlight.lastMoveFromRow = recent->first.row();
+            highlight.lastMoveFromCol = recent->first.col();
+            highlight.lastMoveToRow = recent->second.row();
+            highlight.lastMoveToCol = recent->second.col();
+        }
+
+        view.render(game->getRenderState(), highlight);
     }
 
     return 0;

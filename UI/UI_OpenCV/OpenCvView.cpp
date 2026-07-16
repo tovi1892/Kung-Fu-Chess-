@@ -50,14 +50,34 @@ void OpenCvView::drawBoard() {
     }
 }
 
-void OpenCvView::render(const std::vector<RenderPiece>& pieces) {
+namespace {
+void drawCellOutline(Img& frame, const CoordinateMapper& mapper, int row, int col, const cv::Scalar& color) {
+    frame.draw_rect_outline(mapper.cellTopLeftX(col), mapper.cellTopLeftY(row),
+                             mapper.cellWidth(), mapper.cellHeight(), color, 3);
+}
+}  // namespace
+
+void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighlight& highlight) {
     Img frame = boardImg_.clone();
 
+    static const cv::Scalar kSelectionColor(255, 255, 255);   // white - the square currently selected
+    static const cv::Scalar kLastMoveColor(80, 220, 80);      // green - the last move's from/to squares
+
+    if (highlight.hasSelection) {
+        drawCellOutline(frame, mapper_, highlight.selectedRow, highlight.selectedCol, kSelectionColor);
+    }
+    if (highlight.hasLastMove) {
+        drawCellOutline(frame, mapper_, highlight.lastMoveFromRow, highlight.lastMoveFromCol, kLastMoveColor);
+        drawCellOutline(frame, mapper_, highlight.lastMoveToRow, highlight.lastMoveToCol, kLastMoveColor);
+    }
+
     for (const auto& rp : pieces) {
-        const int row = static_cast<int>(rp.x + 0.5);
-        const int col = static_cast<int>(rp.y + 0.5);
-        const int px = mapper_.cellTopLeftX(col);
-        const int py = mapper_.cellTopLeftY(row);
+        // rp.x/rp.y are already fractional (GameEngine interpolates them
+        // while a piece is mid-move) - map them straight to sub-cell pixel
+        // position instead of rounding to a whole cell first, or the piece
+        // would visibly jump once mid-flight instead of sliding smoothly.
+        const int px = static_cast<int>(mapper_.cellTopLeftXf(rp.y) + 0.5);
+        const int py = static_cast<int>(mapper_.cellTopLeftYf(rp.x) + 0.5);
 
         const auto& animations = assets_.getAnimations(static_cast<PieceType>(rp.type),
                                                          static_cast<PlayerColor>(rp.color),

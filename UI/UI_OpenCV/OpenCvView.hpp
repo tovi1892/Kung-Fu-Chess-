@@ -15,7 +15,7 @@ public:
     ~OpenCvView() override = default;
 
     void init() override;
-    void render(const std::vector<kungfu::RenderPiece>& pieces) override;
+    void render(const std::vector<kungfu::RenderPiece>& pieces, const BoardHighlight& highlight) override;
     bool isOpen() const override;
     void setInputHandler(IInputHandlerPtr handler) override;
 

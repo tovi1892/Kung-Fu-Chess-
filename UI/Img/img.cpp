@@ -48,6 +48,14 @@ Img& Img::draw_rect(int x, int y, int w, int h, const cv::Scalar& color) {
     return *this;
 }
 
+Img& Img::draw_rect_outline(int x, int y, int w, int h, const cv::Scalar& color, int thickness) {
+    if (img.empty()) {
+        throw std::runtime_error("Image not loaded.");
+    }
+    cv::rectangle(img, cv::Rect(x, y, w, h), color, thickness);
+    return *this;
+}
+
 Img& Img::keyOutNearWhite(int threshold) {
     if (img.empty()) {
         return *this;

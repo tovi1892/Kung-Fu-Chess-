@@ -28,6 +28,14 @@ public:
     int cellTopLeftX(int col) const { return margin_ + col * cellWidth(); }
     int cellTopLeftY(int row) const { return margin_ + row * cellHeight(); }
 
+    // Fractional versions of the above, for a piece mid-move: GameEngine
+    // already hands out a fractional row/col (linear interpolation between
+    // from and to), so rounding to a whole cell before mapping to pixels
+    // would throw that away and make the piece visibly jump once mid-flight
+    // instead of sliding.
+    double cellTopLeftXf(double col) const { return margin_ + col * cellWidth(); }
+    double cellTopLeftYf(double row) const { return margin_ + row * cellHeight(); }
+
     int cellWidth() const { return (windowWidth_ - 2 * margin_) / cols_; }
     int cellHeight() const { return (windowHeight_ - 2 * margin_) / rows_; }
     int margin() const { return margin_; }

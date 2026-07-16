@@ -19,19 +19,34 @@ struct RenderPiece {
     // Current state (idle, moving, airborne)
     int state = 0;
 };
+
+// Cosmetic, cross-boundary hint for which squares a view should highlight -
+// purely a presentation concern (selection feedback, last-move feedback),
+// carries no gameplay meaning. Rows/cols are plain ints, same convention as
+// RenderPiece, so this struct stays free of any Logic model type.
+struct BoardHighlight {
+    bool hasSelection = false;
+    int selectedRow = 0;
+    int selectedCol = 0;
+
+    bool hasLastMove = false;
+    int lastMoveFromRow = 0;
+    int lastMoveFromCol = 0;
+    int lastMoveToRow = 0;
+    int lastMoveToCol = 0;
+};
 } // namespace kungfu
 
 class IGameView {
 public:
     virtual ~IGameView() = default;
 
-    // Initialize the view and load resources (board and piece images)
     virtual void init() = 0;
 
     // Render current frame. `pieces` are in logical coordinates.
-    virtual void render(const std::vector<kungfu::RenderPiece>& pieces) = 0;
+    virtual void render(const std::vector<kungfu::RenderPiece>& pieces,
+                         const kungfu::BoardHighlight& highlight) = 0;
 
-    // Whether the window remains open
     virtual bool isOpen() const = 0;
 
     // Register the handler that receives raw pixel clicks from this view.
