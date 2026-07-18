@@ -111,36 +111,6 @@ bool Controller::isFriendlyPieceAt(const Position& pos) const {
            selectedPiece.value()->color() == targetPiece.value()->color();
 }
 
-bool Controller::selectPiece(const Position& pos) {
-    if (!game_) {
-        return false;
-    }
-
-    if (!selectedPosition_.has_value()) {
-        if (!isSelectable(game_, pos)) {
-            return false;
-        }
-        selectedPosition_ = pos;
-        return true;
-    }
-
-    if (pos == *selectedPosition_) {
-        selectedPosition_.reset();
-        return game_->requestJump(pos);
-    }
-
-    if (isFriendlyPieceAt(pos) && isSelectable(game_, pos)) {
-        selectedPosition_ = pos;
-        return true;
-    }
-
-    const auto result = game_->requestMove(*selectedPosition_, pos);
-    if (result.is_accepted) {
-        selectedPosition_.reset();
-    }
-    return result.is_accepted;
-}
-
 bool Controller::requestMove(const Position& from, const Position& to) {
     if (!game_) {
         return false;

@@ -51,6 +51,8 @@ public:
     int offsetY() const { return offsetY_; }
     int boardWidth() const { return boardWidth_; }
     int boardHeight() const { return boardHeight_; }
+    int rows() const { return rows_; }
+    int cols() const { return cols_; }
 
 private:
     int boardWidth_;

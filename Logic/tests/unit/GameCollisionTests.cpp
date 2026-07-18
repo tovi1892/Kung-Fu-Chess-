@@ -7,11 +7,9 @@
 #include "model/Position.hpp"
 #include "model/pieces/Rook.hpp"
 #include "model/pieces/Knight.hpp"
-#include "model/pieces/King.hpp"
 #include "model/pieces/Pawn.hpp"
-#include "model/pieces/Queen.hpp"
-#include "model/pieces/Bishop.hpp"
 #include "model/pieces/Piece.hpp"
+#include "TestHelpers.hpp"
 
 using namespace kungfu;
 
@@ -24,20 +22,12 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         // reaches (0,2) partway through White's residency there, so it's
         // Black's step that discovers the square occupied. Black wins and
         // stops right there, even though White started moving first.
-        auto board = std::make_shared<Board>();
+        auto board = emptyBoardWithKings();
         GameEngine game(board);
         game.start();
 
-        for (int r = 0; r < 8; ++r) {
-            for (int c = 0; c < 8; ++c) {
-                board->removePiece(Position(r, c));
-            }
-        }
-
         board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
         board->placePiece(std::make_unique<Rook>(PlayerColor::Black, Position(0, 4)), Position(0, 4));
-        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
         REQUIRE(game.requestMove(Position(0, 0), Position(0, 4)).is_accepted);
         game.wait(GameConfig::kMsPerCell / 2);
@@ -72,20 +62,12 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         // row 0, so the "friendly collision" only becomes real mid-flight
         // (via RealTimeArbiter's dynamic-collision check) rather than being
         // rejected upfront by RuleEngine's friendly_destination guard.
-        auto board = std::make_shared<Board>();
+        auto board = emptyBoardWithKings();
         GameEngine game(board);
         game.start();
 
-        for (int r = 0; r < 8; ++r) {
-            for (int c = 0; c < 8; ++c) {
-                board->removePiece(Position(r, c));
-            }
-        }
-
         board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
         board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 6)), Position(0, 6));
-        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
         REQUIRE(game.requestMove(Position(0, 0), Position(0, 5)).is_accepted);
         REQUIRE(game.requestMove(Position(0, 6), Position(0, 1)).is_accepted);
@@ -105,23 +87,15 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
     }
 
     SECTION("Knight jumps over pieces and captures only on landing") {
-        auto board = std::make_shared<Board>();
+        auto board = emptyBoardWithKings();
         GameEngine game(board);
         game.start();
-
-        for (int r = 0; r < 8; ++r) {
-            for (int c = 0; c < 8; ++c) {
-                board->removePiece(Position(r, c));
-            }
-        }
 
         board->placePiece(std::make_unique<Knight>(PlayerColor::White, Position(0, 0)), Position(0, 0));
         // Sits "in the way" of the knight's L-shape; a knight must never be
         // blocked by it, friendly or not, and must never capture it either.
         board->placePiece(std::make_unique<Pawn>(PlayerColor::White, Position(1, 0)), Position(1, 0));
         board->placePiece(std::make_unique<Pawn>(PlayerColor::Black, Position(2, 1)), Position(2, 1));
-        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
         REQUIRE(game.requestMove(Position(0, 0), Position(2, 1)).is_accepted);
         game.wait(2000);
@@ -139,20 +113,12 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
     }
 
     SECTION("Knight cannot land on a friendly-occupied square") {
-        auto board = std::make_shared<Board>();
+        auto board = emptyBoardWithKings();
         GameEngine game(board);
         game.start();
 
-        for (int r = 0; r < 8; ++r) {
-            for (int c = 0; c < 8; ++c) {
-                board->removePiece(Position(r, c));
-            }
-        }
-
         board->placePiece(std::make_unique<Knight>(PlayerColor::White, Position(0, 0)), Position(0, 0));
         board->placePiece(std::make_unique<Pawn>(PlayerColor::White, Position(2, 1)), Position(2, 1));
-        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
         const auto result = game.requestMove(Position(0, 0), Position(2, 1));
         REQUIRE(result.is_accepted == false);
@@ -160,20 +126,12 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
     }
 
     SECTION("Capturing a static enemy mid-slide stops the move there, like standard chess") {
-        auto board = std::make_shared<Board>();
+        auto board = emptyBoardWithKings();
         GameEngine game(board);
         game.start();
 
-        for (int r = 0; r < 8; ++r) {
-            for (int c = 0; c < 8; ++c) {
-                board->removePiece(Position(r, c));
-            }
-        }
-
         board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
         board->placePiece(std::make_unique<Pawn>(PlayerColor::Black, Position(0, 3)), Position(0, 3));
-        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
         // Requesting a move past the enemy pawn is now legal to *request*...
         const auto result = game.requestMove(Position(0, 0), Position(0, 6));
@@ -190,20 +148,12 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
     }
 
     SECTION("A piece's origin square becomes a legal target the instant it starts moving") {
-        auto board = std::make_shared<Board>();
+        auto board = emptyBoardWithKings();
         GameEngine game(board);
         game.start();
 
-        for (int r = 0; r < 8; ++r) {
-            for (int c = 0; c < 8; ++c) {
-                board->removePiece(Position(r, c));
-            }
-        }
-
         board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(4, 4)), Position(4, 4));
         board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(4, 1)), Position(4, 1));
-        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
         // The rook at (4,4) starts leaving - still physically there (Board
         // hasn't stepped it into its next cell yet), but its state is
@@ -221,20 +171,12 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
     }
 
     SECTION("A friendly piece on cooldown still blocks its square (only Moving is exempt)") {
-        auto board = std::make_shared<Board>();
+        auto board = emptyBoardWithKings();
         GameEngine game(board);
         game.start();
 
-        for (int r = 0; r < 8; ++r) {
-            for (int c = 0; c < 8; ++c) {
-                board->removePiece(Position(r, c));
-            }
-        }
-
         board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
         board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 3)), Position(0, 3));
-        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
 
         REQUIRE(game.requestMove(Position(0, 0), Position(0, 1)).is_accepted);
         game.wait(GameConfig::kMsPerCell);  // arrival - now on cooldown at (0,1)

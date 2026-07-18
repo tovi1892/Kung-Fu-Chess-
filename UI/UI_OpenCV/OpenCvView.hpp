@@ -32,10 +32,11 @@ public:
 
 private:
     static void onMouse(int event, int x, int y, int flags, void* userdata);
-    // Renders the checkerboard + a-h/1-8 coordinate labels + panel
-    // background/dividers into boardImg_ once, from code - no background
-    // image file is involved. Player name/score/move-list content is
-    // dynamic and drawn fresh every render() call instead.
+    // Builds boardImg_ once, from code (no background image file is
+    // involved): the panel background/dividers directly, delegating the
+    // checkerboard + a-h/1-8 labels to BoardRenderer. Player name/score/
+    // move-list content is dynamic and drawn fresh every render() call
+    // instead (see ScoreboardRenderer).
     void drawStaticBackground();
 
     int boardSize_;

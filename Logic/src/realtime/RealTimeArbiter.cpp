@@ -34,16 +34,89 @@ void RealTimeArbiter::promoteIfNeeded(const Position& pos) {
     }
 }
 
-void RealTimeArbiter::beginCooldown(Piece* piece) {
+Piece* RealTimeArbiter::findPieceById(uintptr_t pieceId) const {
+    for (Piece* candidate : board_->pieces()) {
+        if (candidate && static_cast<uintptr_t>(candidate->id()) == pieceId) {
+            return candidate;
+        }
+    }
+    return nullptr;
+}
+
+void RealTimeArbiter::beginRest(Piece* piece, PieceState state, int durationMs, std::vector<TimerEntry>& entries) {
     if (!piece) return;
-    piece->setState(PieceState::Cooldown);
-    cooldowns_.push_back({static_cast<uintptr_t>(piece->id()), currentTimeMs_ + cooldownMs_});
+    piece->setState(state);
+    entries.push_back({static_cast<uintptr_t>(piece->id()), currentTimeMs_ + durationMs});
+}
+
+int RealTimeArbiter::restRemainingMs(uintptr_t pieceId, const std::vector<TimerEntry>& entries) const {
+    for (const auto& entry : entries) {
+        if (entry.pieceId == pieceId) {
+            return std::max(0, entry.endTimeMs - currentTimeMs_);
+        }
+    }
+    return 0;
+}
+
+void RealTimeArbiter::resolveRestExpirations(std::vector<TimerEntry>& entries, PieceState expectedState) {
+    for (auto it = entries.begin(); it != entries.end();) {
+        if (it->endTimeMs != currentTimeMs_) {
+            ++it;
+            continue;
+        }
+
+        const uintptr_t pieceId = it->pieceId;
+        it = entries.erase(it);
+
+        Piece* piece = findPieceById(pieceId);
+        if (!piece || piece->state() != expectedState) {
+            continue;  // already changed state some other way (e.g. counter-kill)
+        }
+        piece->setState(PieceState::Idle);
+
+        auto premoveIt = premoves_.find(pieceId);
+        if (premoveIt == premoves_.end()) {
+            continue;
+        }
+        const Position to = premoveIt->second;
+        premoves_.erase(premoveIt);
+
+        if (!ruleEngine_) {
+            continue;
+        }
+        const auto validation = ruleEngine_->validateMove(piece->position(), to);
+        if (!validation.is_valid) {
+            continue;  // invalid premove just fizzles - this is also how a
+                       // deliberately-illegal request cancels a real one.
+        }
+
+        piece->setState(PieceState::Moving);
+        startMove(piece->position(), to, pieceId);
+    }
+}
+
+void RealTimeArbiter::beginCooldown(Piece* piece) {
+    beginRest(piece, PieceState::Cooldown, cooldownMs_, cooldowns_);
 }
 
 void RealTimeArbiter::beginShortRest(Piece* piece) {
-    if (!piece) return;
-    piece->setState(PieceState::ShortRest);
-    shortRestEntries_.push_back({static_cast<uintptr_t>(piece->id()), currentTimeMs_ + shortRestMs_});
+    beginRest(piece, PieceState::ShortRest, shortRestMs_, shortRestEntries_);
+}
+
+void RealTimeArbiter::resolveCooldownExpirations() {
+    resolveRestExpirations(cooldowns_, PieceState::Cooldown);
+}
+
+void RealTimeArbiter::resolveShortRestExpirations() {
+    resolveRestExpirations(shortRestEntries_, PieceState::ShortRest);
+}
+
+int RealTimeArbiter::cooldownRemainingMs(uintptr_t pieceId) const {
+    return restRemainingMs(pieceId, cooldowns_);
+}
+
+int RealTimeArbiter::shortRestRemainingMs(uintptr_t pieceId) const {
+    return restRemainingMs(pieceId, shortRestEntries_);
 }
 
 void RealTimeArbiter::startMove(const Position& from, const Position& to, uintptr_t pieceId) {
@@ -71,24 +144,6 @@ void RealTimeArbiter::startMove(const Position& from, const Position& to, uintpt
 
 void RealTimeArbiter::setPremove(uintptr_t pieceId, const Position& to) {
     premoves_[pieceId] = to;
-}
-
-int RealTimeArbiter::cooldownRemainingMs(uintptr_t pieceId) const {
-    for (const auto& entry : cooldowns_) {
-        if (entry.pieceId == pieceId) {
-            return std::max(0, entry.endTimeMs - currentTimeMs_);
-        }
-    }
-    return 0;
-}
-
-int RealTimeArbiter::shortRestRemainingMs(uintptr_t pieceId) const {
-    for (const auto& entry : shortRestEntries_) {
-        if (entry.pieceId == pieceId) {
-            return std::max(0, entry.endTimeMs - currentTimeMs_);
-        }
-    }
-    return 0;
 }
 
 void RealTimeArbiter::beginAirborne(uintptr_t pieceId) {
@@ -126,13 +181,7 @@ void RealTimeArbiter::resolveAirborneExpirations() {
         const uintptr_t pieceId = it->pieceId;
         it = airborneEntries_.erase(it);
 
-        Piece* piece = nullptr;
-        for (Piece* candidate : board_->pieces()) {
-            if (candidate && static_cast<uintptr_t>(candidate->id()) == pieceId) {
-                piece = candidate;
-                break;
-            }
-        }
+        Piece* piece = findPieceById(pieceId);
         if (!piece || piece->state() != PieceState::Airborne) {
             continue;  // already landed some other way (e.g. counter-kill)
         }
@@ -140,89 +189,157 @@ void RealTimeArbiter::resolveAirborneExpirations() {
     }
 }
 
-void RealTimeArbiter::resolveCooldownExpirations() {
-    for (auto it = cooldowns_.begin(); it != cooldowns_.end();) {
-        if (it->endTimeMs != currentTimeMs_) {
-            ++it;
-            continue;
-        }
-
-        const uintptr_t pieceId = it->pieceId;
-        it = cooldowns_.erase(it);
-
-        Piece* piece = nullptr;
-        for (Piece* candidate : board_->pieces()) {
-            if (candidate && static_cast<uintptr_t>(candidate->id()) == pieceId) {
-                piece = candidate;
-                break;
-            }
-        }
-        if (!piece || piece->state() != PieceState::Cooldown) {
-            continue;
-        }
-        piece->setState(PieceState::Idle);
-
-        auto premoveIt = premoves_.find(pieceId);
-        if (premoveIt == premoves_.end()) {
-            continue;
-        }
-        const Position to = premoveIt->second;
-        premoves_.erase(premoveIt);
-
-        if (!ruleEngine_) {
-            continue;
-        }
-        const auto validation = ruleEngine_->validateMove(piece->position(), to);
-        if (!validation.is_valid) {
-            continue;  // invalid premove just fizzles - this is also how a
-                       // deliberately-illegal request cancels a real one.
-        }
-
-        piece->setState(PieceState::Moving);
-        startMove(piece->position(), to, pieceId);
+// Knights jump in one L-shaped hop: there is no intermediate square to
+// block or be captured along the way, so nothing happens until arrival,
+// and only the landing square (pm.to) is ever inspected - never whatever
+// the knight jumped over.
+bool RealTimeArbiter::resolveKnightArrival(PendingMove& pm, Piece* currentPiece) {
+    if (currentTimeMs_ != pm.arrivalTimeMs) {
+        return false;
     }
+    pm.active = false;
+
+    const auto targetPieceOpt = board_->pieceAt(pm.to);
+    if (targetPieceOpt.has_value() && targetPieceOpt.value() != nullptr) {
+        Piece* target = targetPieceOpt.value();
+        if (target->color() == currentPiece->color()) {
+            // Can never land on a friendly-occupied square - the jump aborts in place.
+            currentPiece->setState(PieceState::Idle);
+            return false;
+        }
+
+        if (target->state() == PieceState::Airborne) {
+            resolveAirborneCounterKill(pm, currentPiece, target);
+            return kingCaptured_;
+        }
+
+        const bool capturedKing = (target->type() == PieceType::King);
+        recordCapture(currentPiece->color(), target->type());
+        board_->removePiece(pm.to);
+        board_->movePiece(pm.currentPos, pm.to);
+        pm.currentPos = pm.to;
+        if (capturedKing) {
+            kingCaptured_ = true;
+            return true;
+        }
+        beginCooldown(currentPiece);
+        return false;
+    }
+
+    board_->movePiece(pm.currentPos, pm.to);
+    pm.currentPos = pm.to;
+    beginCooldown(currentPiece);
+    return false;
 }
 
-void RealTimeArbiter::resolveShortRestExpirations() {
-    for (auto it = shortRestEntries_.begin(); it != shortRestEntries_.end();) {
-        if (it->endTimeMs != currentTimeMs_) {
-            ++it;
-            continue;
-        }
+// One square-by-square step for a sliding or stepping (non-knight) piece,
+// if this tick is when its next step (or final arrival) is due. Resolves
+// whatever collision the step runs into - friendly block, a dynamic race
+// against another actively-moving piece, an airborne counter-kill, or an
+// ordinary capture - then checks whether this step also completed the move.
+bool RealTimeArbiter::resolveStepMove(PendingMove& pm, Piece* currentPiece) {
+    if (currentTimeMs_ != pm.nextStepTimeMs && currentTimeMs_ != pm.arrivalTimeMs) {
+        return false;
+    }
 
-        const uintptr_t pieceId = it->pieceId;
-        it = shortRestEntries_.erase(it);
+    Position nextPos(pm.currentPos.row() + pm.rowStep, pm.currentPos.col() + pm.colStep);
+    bool capturedThisStep = false;
 
-        Piece* piece = nullptr;
-        for (Piece* candidate : board_->pieces()) {
-            if (candidate && static_cast<uintptr_t>(candidate->id()) == pieceId) {
-                piece = candidate;
+    auto targetPieceOpt = board_->pieceAt(nextPos);
+    if (targetPieceOpt.has_value() && targetPieceOpt.value() != nullptr) {
+        Piece* target = targetPieceOpt.value();
+
+        // Is the piece already sitting on the next square itself mid-move
+        // (does it have its own active PendingMove)?
+        PendingMove* otherPm = nullptr;
+        for (auto& opm : pendingMoves_) {
+            if (opm.active && opm.currentPos == nextPos) {
+                otherPm = &opm;
                 break;
             }
         }
-        if (!piece || piece->state() != PieceState::ShortRest) {
-            continue;
-        }
-        piece->setState(PieceState::Idle);
 
-        auto premoveIt = premoves_.find(pieceId);
-        if (premoveIt == premoves_.end()) {
-            continue;
-        }
-        const Position to = premoveIt->second;
-        premoves_.erase(premoveIt);
+        if (otherPm != nullptr) {
+            // Both pieces are actively moving and their paths just crossed.
+            if (target->color() == currentPiece->color()) {
+                // Same color: the piece trying to enter stops in place;
+                // whichever piece was already there keeps going, undisturbed.
+                currentPiece->setState(PieceState::Idle);
+                pm.active = false;
+                return false;
+            } else {
+                // Enemy: whichever piece's step *enters* the square and
+                // finds it already occupied wins, regardless of which of
+                // the two started moving first. The winner stops right here
+                // rather than continuing toward its own original target.
+                target->setState(PieceState::Captured);
+                recordCapture(currentPiece->color(), target->type());
+                board_->removePiece(nextPos);
+                otherPm->active = false;
 
-        if (!ruleEngine_) {
-            continue;
-        }
-        const auto validation = ruleEngine_->validateMove(piece->position(), to);
-        if (!validation.is_valid) {
-            continue;  // invalid premove just fizzles, same as after a cooldown
-        }
+                board_->movePiece(pm.currentPos, nextPos);
+                pm.currentPos = nextPos;
+                capturedThisStep = true;
+            }
+        } else {
+            // The piece at the target square isn't itself moving.
+            if (target->color() == currentPiece->color()) {
+                currentPiece->setState(PieceState::Idle);
+                pm.active = false;
+                return false;
+            } else {
+                if (target->state() == PieceState::Airborne) {
+                    // An airborne piece is immune: it lands and eliminates
+                    // the attacker instead of being captured like an
+                    // ordinary stationary piece.
+                    resolveAirborneCounterKill(pm, currentPiece, target);
+                    return kingCaptured_;
+                }
 
-        piece->setState(PieceState::Moving);
-        startMove(piece->position(), to, pieceId);
+                // Capturing a stationary enemy ends the slide here, exactly
+                // like standard chess.
+                bool capturedKing = (target->type() == PieceType::King);
+                recordCapture(currentPiece->color(), target->type());
+
+                // Any other pending move that was also racing toward this
+                // now-captured square stops too.
+                for (auto& otherPm2 : pendingMoves_) {
+                    if (otherPm2.active && otherPm2.currentPos == nextPos) {
+                        otherPm2.active = false;
+                    }
+                }
+
+                board_->removePiece(nextPos);
+                board_->movePiece(pm.currentPos, nextPos);
+                pm.currentPos = nextPos;
+                capturedThisStep = true;
+
+                if (capturedKing) {
+                    kingCaptured_ = true;
+                    pm.active = false;
+                    return true;
+                }
+            }
+        }
+    } else {
+        // Nothing occupies the next square - just advance.
+        board_->movePiece(pm.currentPos, nextPos);
+        pm.currentPos = nextPos;
     }
+
+    // A capture ends the move right here, even short of the originally
+    // requested target. Otherwise, check whether this step reached the
+    // final destination.
+    if (capturedThisStep || pm.currentPos == pm.to || currentTimeMs_ >= pm.arrivalTimeMs) {
+        pm.active = false;
+        if (auto arrivedPiece = board_->pieceAt(pm.currentPos); arrivedPiece.has_value()) {
+            beginCooldown(arrivedPiece.value());
+        }
+        promoteIfNeeded(pm.currentPos);
+    } else {
+        pm.nextStepTimeMs += msPerCell_;
+    }
+    return false;
 }
 
 void RealTimeArbiter::advanceTime(int ms) {
@@ -240,155 +357,11 @@ void RealTimeArbiter::advanceTime(int ms) {
             }
             Piece* currentPiece = currentPieceOpt.value();
 
-            // Knights jump in one L-shaped hop: there is no intermediate square
-            // to block or be captured along the way, so nothing happens until
-            // arrival, and only the landing square (pm.to) is ever inspected -
-            // never whatever the knight jumped over.
-            if (currentPiece->type() == PieceType::Knight) {
-                if (currentTimeMs_ != pm.arrivalTimeMs) {
-                    continue;
-                }
-                pm.active = false;
-
-                const auto targetPieceOpt = board_->pieceAt(pm.to);
-                if (targetPieceOpt.has_value() && targetPieceOpt.value() != nullptr) {
-                    Piece* target = targetPieceOpt.value();
-                    if (target->color() == currentPiece->color()) {
-                        // Can never land on a friendly-occupied square - the jump aborts in place.
-                        currentPiece->setState(PieceState::Idle);
-                        continue;
-                    }
-
-                    if (target->state() == PieceState::Airborne) {
-                        resolveAirborneCounterKill(pm, currentPiece, target);
-                        if (kingCaptured_) {
-                            return;
-                        }
-                        continue;
-                    }
-
-                    const bool capturedKing = (target->type() == PieceType::King);
-                    recordCapture(currentPiece->color(), target->type());
-                    board_->removePiece(pm.to);
-                    board_->movePiece(pm.currentPos, pm.to);
-                    pm.currentPos = pm.to;
-                    if (capturedKing) {
-                        kingCaptured_ = true;
-                        return;
-                    }
-                    beginCooldown(currentPiece);
-                    continue;
-                }
-
-                board_->movePiece(pm.currentPos, pm.to);
-                pm.currentPos = pm.to;
-                beginCooldown(currentPiece);
-                continue;
-            }
-
-            if (currentTimeMs_ == pm.nextStepTimeMs || currentTimeMs_ == pm.arrivalTimeMs) {
-                Position nextPos(pm.currentPos.row() + pm.rowStep, pm.currentPos.col() + pm.colStep);
-                bool capturedThisStep = false;
-
-                auto targetPieceOpt = board_->pieceAt(nextPos);
-                if (targetPieceOpt.has_value() && targetPieceOpt.value() != nullptr) {
-                    Piece* target = targetPieceOpt.value();
-
-                    // Is the piece already sitting on the next square itself
-                    // mid-move (does it have its own active PendingMove)?
-                    PendingMove* otherPm = nullptr;
-                    for (auto& opm : pendingMoves_) {
-                        if (opm.active && opm.currentPos == nextPos) {
-                            otherPm = &opm;
-                            break;
-                        }
-                    }
-
-                    if (otherPm != nullptr) {
-                        // Both pieces are actively moving and their paths just crossed.
-                        if (target->color() == currentPiece->color()) {
-                            // Same color: the piece trying to enter stops in
-                            // place; whichever piece was already there keeps
-                            // going, undisturbed.
-                            currentPiece->setState(PieceState::Idle);
-                            pm.active = false;
-                            continue;
-                        } else {
-                            // Enemy: whichever piece's step *enters* the
-                            // square and finds it already occupied wins,
-                            // regardless of which of the two started moving
-                            // first. The winner stops right here rather than
-                            // continuing toward its own original target.
-                            target->setState(PieceState::Captured);
-                            recordCapture(currentPiece->color(), target->type());
-                            board_->removePiece(nextPos);
-                            otherPm->active = false;
-
-                            board_->movePiece(pm.currentPos, nextPos);
-                            pm.currentPos = nextPos;
-                            capturedThisStep = true;
-                        }
-                    } else {
-                        // The piece at the target square isn't itself moving.
-                        if (target->color() == currentPiece->color()) {
-                            currentPiece->setState(PieceState::Idle);
-                            pm.active = false;
-                            continue;
-                        } else {
-                            if (target->state() == PieceState::Airborne) {
-                                // An airborne piece is immune: it lands and
-                                // eliminates the attacker instead of being
-                                // captured like an ordinary stationary piece.
-                                resolveAirborneCounterKill(pm, currentPiece, target);
-                                if (kingCaptured_) {
-                                    return;
-                                }
-                                continue;
-                            }
-
-                            // Capturing a stationary enemy ends the slide
-                            // here, exactly like standard chess.
-                            bool capturedKing = (target->type() == PieceType::King);
-                            recordCapture(currentPiece->color(), target->type());
-
-                            // Any other pending move that was also racing
-                            // toward this now-captured square stops too.
-                            for (auto& otherPm2 : pendingMoves_) {
-                                if (otherPm2.active && otherPm2.currentPos == nextPos) {
-                                    otherPm2.active = false;
-                                }
-                            }
-
-                            board_->removePiece(nextPos);
-                            board_->movePiece(pm.currentPos, nextPos);
-                            pm.currentPos = nextPos;
-                            capturedThisStep = true;
-
-                            if (capturedKing) {
-                                kingCaptured_ = true;
-                                pm.active = false;
-                                return;
-                            }
-                        }
-                    }
-                } else {
-                    // Nothing occupies the next square - just advance.
-                    board_->movePiece(pm.currentPos, nextPos);
-                    pm.currentPos = nextPos;
-                }
-
-                // A capture ends the move right here, even short of the
-                // originally requested target. Otherwise, check whether this
-                // step reached the final destination.
-                if (capturedThisStep || pm.currentPos == pm.to || currentTimeMs_ >= pm.arrivalTimeMs) {
-                    pm.active = false;
-                    if (auto arrivedPiece = board_->pieceAt(pm.currentPos); arrivedPiece.has_value()) {
-                        beginCooldown(arrivedPiece.value());
-                    }
-                    promoteIfNeeded(pm.currentPos);
-                } else {
-                    pm.nextStepTimeMs += msPerCell_;
-                }
+            const bool kingCapturedThisStep = (currentPiece->type() == PieceType::Knight)
+                                                   ? resolveKnightArrival(pm, currentPiece)
+                                                   : resolveStepMove(pm, currentPiece);
+            if (kingCapturedThisStep) {
+                return;
             }
         }
 

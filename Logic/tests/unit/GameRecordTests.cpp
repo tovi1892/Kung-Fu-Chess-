@@ -5,11 +5,11 @@
 #include "history/GameRecord.hpp"
 #include "model/Board.hpp"
 #include "model/GameConfig.hpp"
-#include "model/pieces/King.hpp"
 #include "model/pieces/Knight.hpp"
 #include "model/pieces/Pawn.hpp"
 #include "model/pieces/Queen.hpp"
 #include "model/pieces/Rook.hpp"
+#include "TestHelpers.hpp"
 
 using namespace kungfu;
 
@@ -62,7 +62,7 @@ TEST_CASE("GameRecord tracks moves and scores independently per color", "[histor
 }
 
 TEST_CASE("GameEngine records an accepted move's notation immediately", "[history][realtime]") {
-    auto board = std::make_shared<Board>();
+    auto board = emptyBoard();
     board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
     GameEngine game(board);
     game.start();
@@ -75,9 +75,7 @@ TEST_CASE("GameEngine records an accepted move's notation immediately", "[histor
 }
 
 TEST_CASE("A real-time capture updates the capturing color's score", "[history][realtime]") {
-    auto board = std::make_shared<Board>();
-    board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-    board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
+    auto board = emptyBoardWithKings();
     board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(0, 0)), Position(0, 0));
     board->placePiece(std::make_unique<Pawn>(PlayerColor::Black, Position(0, 3)), Position(0, 3));
     GameEngine game(board);
@@ -91,9 +89,7 @@ TEST_CASE("A real-time capture updates the capturing color's score", "[history][
 }
 
 TEST_CASE("A knight capture on landing updates score too", "[history][realtime]") {
-    auto board = std::make_shared<Board>();
-    board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-    board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
+    auto board = emptyBoardWithKings();
     board->placePiece(std::make_unique<Knight>(PlayerColor::White, Position(0, 0)), Position(0, 0));
     board->placePiece(std::make_unique<Queen>(PlayerColor::Black, Position(2, 1)), Position(2, 1));
     GameEngine game(board);

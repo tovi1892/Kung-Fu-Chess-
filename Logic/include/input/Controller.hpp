@@ -40,11 +40,6 @@ public:
     // True when a piece is currently selected and 'pos' holds a same-color piece.
     bool isFriendlyPieceAt(const Position& pos) const;
 
-    // A direct, pixel-free equivalent of handleCellClick's selection logic.
-    // Not called from anywhere in this codebase today (no UI path, no test)
-    // - a parallel entry point, not currently exercised.
-    bool selectPiece(const Position& pos);
-
     // Direct move/jump requests that bypass the click/selection flow
     // entirely, clearing any selection on success. Used by tests that don't
     // want to simulate clicks.

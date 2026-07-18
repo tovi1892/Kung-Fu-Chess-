@@ -4,26 +4,10 @@
 #include "engine/GameEngine.hpp"
 #include "model/Board.hpp"
 #include "model/GameConfig.hpp"
-#include "model/pieces/King.hpp"
 #include "model/pieces/Rook.hpp"
+#include "TestHelpers.hpp"
 
 using namespace kungfu;
-
-namespace {
-
-std::shared_ptr<Board> emptyBoardWithKings() {
-    auto board = std::make_shared<Board>();
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            board->removePiece(Position(r, c));
-        }
-    }
-    board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-    board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
-    return board;
-}
-
-}  // namespace
 
 TEST_CASE("A piece enters cooldown on arrival and returns to Idle once it elapses", "[cooldown]") {
     auto board = emptyBoardWithKings();

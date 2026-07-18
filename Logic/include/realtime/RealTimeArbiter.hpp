@@ -103,19 +103,39 @@ private:
     };
 
     void promoteIfNeeded(const Position& pos);
+
+    // Cooldown (after a real move's arrival) and short rest (after landing
+    // from a jump) are structurally the same "piece temporarily
+    // unavailable, may have a premove queued" timer - just a different
+    // duration and trigger point. Both are thin wrappers around the shared
+    // beginRest/restRemainingMs/resolveRestExpirations machinery below, so
+    // call sites keep purpose-specific names.
     void beginCooldown(Piece* piece);
-    // Puts a piece that just landed from a jump (naturally or via a
-    // counter-kill) into PieceState::ShortRest and starts its rest timer -
-    // the jump's equivalent of beginCooldown above.
     void beginShortRest(Piece* piece);
     void resolveCooldownExpirations();
-    void resolveAirborneExpirations();
     void resolveShortRestExpirations();
+
+    void resolveAirborneExpirations();
     // An enemy's real-time move stepped onto a square held by an airborne
     // piece: the jumper is immune, so it lands into a short rest and the
     // attacker is removed instead of the usual capture-and-advance.
     void resolveAirborneCounterKill(PendingMove& pm, Piece* attacker, Piece* airbornePiece);
     void recordCapture(PlayerColor capturingColor, PieceType capturedType);
+
+    Piece* findPieceById(uintptr_t pieceId) const;
+    void beginRest(Piece* piece, PieceState state, int durationMs, std::vector<TimerEntry>& entries);
+    int restRemainingMs(uintptr_t pieceId, const std::vector<TimerEntry>& entries) const;
+    // Lands every entry in 'entries' whose timer just expired back to Idle
+    // (skipping any that already changed state some other way, e.g. a
+    // counter-kill), then fires its queued premove, if any and still legal.
+    void resolveRestExpirations(std::vector<TimerEntry>& entries, PieceState expectedState);
+
+    // One tick's worth of resolution for a single in-flight move, split by
+    // movement style (see advanceTime). Both return true only when this
+    // resolution captured a king - advanceTime stops immediately when that
+    // happens, matching real-time play with no further moves after game over.
+    bool resolveKnightArrival(PendingMove& pm, Piece* currentPiece);
+    bool resolveStepMove(PendingMove& pm, Piece* currentPiece);
 
     std::shared_ptr<IBoard> board_;
     std::shared_ptr<IRuleEngine> ruleEngine_;

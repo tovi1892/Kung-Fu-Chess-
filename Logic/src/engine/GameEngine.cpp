@@ -127,6 +127,14 @@ std::vector<RenderPiece> GameEngine::getRenderState() const {
         if (pm.active) map[pm.pieceId] = pm;
     }
 
+    // A view only ever needs "how long until this piece is available again",
+    // not why - both the post-move cooldown and the post-jump short rest
+    // report through this same pair of RenderPiece fields.
+    auto applyRestProgress = [](RenderPiece& rp, int remainingMs, int totalMs) {
+        rp.cooldownMs = static_cast<double>(remainingMs);
+        rp.cooldownTotalMs = static_cast<double>(totalMs);
+    };
+
     for (auto& rp : render) {
         rp.cooldownMs = 0.0;
         rp.cooldownTotalMs = 0.0;
@@ -148,16 +156,9 @@ std::vector<RenderPiece> GameEngine::getRenderState() const {
             rp.x = sx + (ex - sx) * t;
             rp.y = sy + (ey - sy) * t;
         } else if (static_cast<PieceState>(rp.state) == PieceState::Cooldown) {
-            // Not moving, but on cooldown: surface real remaining/total
-            // cooldown so a view can draw a progress indicator.
-            rp.cooldownMs = static_cast<double>(arbiter_->cooldownRemainingMs(rp.id));
-            rp.cooldownTotalMs = static_cast<double>(arbiter_->cooldownMs());
+            applyRestProgress(rp, arbiter_->cooldownRemainingMs(rp.id), arbiter_->cooldownMs());
         } else if (static_cast<PieceState>(rp.state) == PieceState::ShortRest) {
-            // Resting after a jump: same idea, shorter total duration -
-            // reuses cooldownMs/cooldownTotalMs since a view only needs "how
-            // much of this unavailable period is left", not why.
-            rp.cooldownMs = static_cast<double>(arbiter_->shortRestRemainingMs(rp.id));
-            rp.cooldownTotalMs = static_cast<double>(arbiter_->shortRestMs());
+            applyRestProgress(rp, arbiter_->shortRestRemainingMs(rp.id), arbiter_->shortRestMs());
         }
     }
 

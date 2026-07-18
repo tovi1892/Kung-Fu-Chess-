@@ -2,7 +2,6 @@
 #include "model/Board.hpp"
 #include "model/GameConfig.hpp"
 #include "engine/GameEngine.hpp"
-#include "model/pieces/King.hpp"
 #include "model/pieces/Knight.hpp"
 #include "model/pieces/Rook.hpp"
 #include "TestHelpers.hpp"
@@ -86,9 +85,7 @@ TEST_CASE("Requesting a normal move for an airborne piece is rejected", "[jump][
 }
 
 TEST_CASE("An enemy sliding piece that reaches an airborne square kills the attacker instead of the jumper", "[jump][realtime]") {
-    auto board = std::make_shared<Board>();
-    board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-    board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
+    auto board = emptyBoardWithKings();
     board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(3, 3)), Position(3, 3));
     board->placePiece(std::make_unique<Rook>(PlayerColor::Black, Position(3, 2)), Position(3, 2));
     GameEngine game(board);
@@ -107,9 +104,7 @@ TEST_CASE("An enemy sliding piece that reaches an airborne square kills the atta
 }
 
 TEST_CASE("A knight landing on an airborne enemy is also killed by the counter-kill", "[jump][realtime]") {
-    auto board = std::make_shared<Board>();
-    board->placePiece(std::make_unique<King>(PlayerColor::White, Position(7, 7)), Position(7, 7));
-    board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 6)), Position(7, 6));
+    auto board = emptyBoardWithKings();
     board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(3, 3)), Position(3, 3));
     board->placePiece(std::make_unique<Knight>(PlayerColor::Black, Position(1, 2)), Position(1, 2));
     GameEngine game(board);
