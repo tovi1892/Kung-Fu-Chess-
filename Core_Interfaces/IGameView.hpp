@@ -67,6 +67,14 @@ struct Scoreboard {
     PlayerPanel white;
     PlayerPanel black;
 };
+
+// A transient game-lifecycle message (start/end) a view should display centered over
+// the board for a short while - main.cpp owns how long 'visible' stays true. Plain data,
+// same reasoning as BoardHighlight: purely presentation, carries no gameplay meaning.
+struct Banner {
+    bool visible = false;
+    std::string text;
+};
 } // namespace kungfu
 
 class IGameView {
@@ -79,7 +87,8 @@ public:
     // Render current frame. `pieces` are in logical coordinates.
     virtual void render(const std::vector<kungfu::RenderPiece>& pieces,
                          const kungfu::BoardHighlight& highlight,
-                         const kungfu::Scoreboard& scoreboard) = 0;
+                         const kungfu::Scoreboard& scoreboard,
+                         const kungfu::Banner& banner) = 0;
 
     // False once the window has been closed - the signal that ends the caller's render loop.
     virtual bool isOpen() const = 0;

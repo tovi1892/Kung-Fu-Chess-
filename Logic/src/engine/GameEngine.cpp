@@ -27,7 +27,20 @@ GameEngine::GameEngine(std::shared_ptr<IBoard> board, std::shared_ptr<IRuleEngin
     if (!ruleEngine_) {
         ruleEngine_ = std::make_shared<RuleEngine>(board_);
     }
-    arbiter_ = std::make_unique<RealTimeArbiter>(board_, ruleEngine_, speedMultiplier);
+    arbiter_ = std::make_unique<RealTimeArbiter>(board_, ruleEngine_, captureBus_, speedMultiplier);
+
+    // The only subscriber GameEngine wires up on itself: every other consumer (UI score
+    // panel, move log, sound, banners) subscribes from the outside via onPieceCaptured()
+    // etc. This one updates GameRecord (Logic's own ledger) and detects game-over -
+    // both are GameEngine's own bookkeeping, not something an external subscriber should
+    // have to reproduce.
+    captureBus_.subscribe([this](const PieceCaptured& event) {
+        record_.recordCapture(event.capturingColor, event.capturedType);
+        if (event.capturedType == PieceType::King) {
+            state_ = GameState::Finished;
+            endBus_.publish({event.capturingColor});
+        }
+    });
 }
 
 MoveResult GameEngine::requestMove(const Position& from, const Position& to) {
@@ -69,7 +82,9 @@ MoveResult GameEngine::requestMove(const Position& from, const Position& to) {
     const bool isCapture = targetPieceOpt.has_value() && targetPieceOpt.value() != nullptr &&
                             targetPieceOpt.value()->color() != movingPiece->color();
     const std::string notation = moveNotation(movingPiece->type(), from, to, isCapture);
-    record_.recordMove(movingPiece->color(), arbiter_->currentTimeMs(), notation);
+    const int elapsedMs = arbiter_->currentTimeMs();
+    record_.recordMove(movingPiece->color(), elapsedMs, notation);
+    moveBus_.publish({movingPiece->color(), movingPiece->type(), from, to, isCapture, notation, elapsedMs});
 
     arbiter_->startMove(from, to, static_cast<uintptr_t>(movingPiece->id()));
     movingPiece->setState(PieceState::Moving);
@@ -95,6 +110,7 @@ int GameEngine::boardCols() const {
 
 void GameEngine::start() {
     state_ = GameState::Running;
+    startBus_.publish({});
 }
 
 void GameEngine::stop() {
@@ -171,14 +187,6 @@ void GameEngine::wait(int ms) {
     }
 
     arbiter_->advanceTime(ms);
-
-    for (const auto& event : arbiter_->drainCaptureEvents()) {
-        record_.recordCapture(event.capturingColor, event.capturedType);
-    }
-
-    if (arbiter_->isKingCaptured()) {
-        state_ = GameState::Finished;
-    }
 }
 
 bool GameEngine::tryJump(const Position& cell) {

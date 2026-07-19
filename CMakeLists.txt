@@ -56,6 +56,10 @@ else()
     target_link_libraries(kungfu_engine PUBLIC ${OpenCV_LIBS})
 endif()
 
+# SoundPlayer (UI/UI_OpenCV/SoundPlayer.cpp) uses PlaySoundW from winmm - a native
+# Windows API, not a new third-party dependency.
+target_link_libraries(kungfu_engine PUBLIC winmm)
+
 # בניית ה-App הראשי
 # Application
 add_executable(kungfu_app main.cpp)

@@ -20,7 +20,7 @@ public:
 
     void init() override;
     void render(const std::vector<kungfu::RenderPiece>& pieces, const BoardHighlight& highlight,
-                const Scoreboard& scoreboard) override;
+                const Scoreboard& scoreboard, const Banner& banner) override;
     bool isOpen() const override;
     void setInputHandler(IInputHandlerPtr handler) override;
 

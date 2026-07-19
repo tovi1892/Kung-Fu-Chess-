@@ -95,4 +95,23 @@ void drawPiece(Img& frame, const RenderPiece& rp, AssetManager& assets, PieceAni
     }
 }
 
+void drawBanner(Img& frame, const CoordinateMapper& mapper, const std::string& text) {
+    static const cv::Scalar kBackdrop(20, 20, 20);
+    static const cv::Scalar kTextColor(235, 235, 235);
+
+    const double fontSize = 1.0;
+    const int thickness = 2;
+    const int textWidth = frame.text_width(text, fontSize, thickness);
+
+    const int centerX = mapper.offsetX() + mapper.boardWidth() / 2;
+    const int centerY = mapper.offsetY() + mapper.boardHeight() / 2;
+    const int paddingX = 24;
+    const int paddingY = 18;
+    const int boxWidth = textWidth + 2 * paddingX;
+    const int boxHeight = 34 + 2 * paddingY;
+
+    frame.draw_rect(centerX - boxWidth / 2, centerY - boxHeight / 2, boxWidth, boxHeight, kBackdrop);
+    frame.put_text(text, centerX - textWidth / 2, centerY + 10, fontSize, kTextColor, thickness);
+}
+
 }  // namespace kungfu

@@ -39,4 +39,8 @@ void drawRestRing(Img& frame, const CoordinateMapper& mapper, int cellPx, int ce
 void drawPiece(Img& frame, const RenderPiece& rp, AssetManager& assets, PieceAnimator& animator,
                const CoordinateMapper& mapper);
 
+// Draws a centered, game-lifecycle banner (e.g. "GAME START", "WHITE WINS") over the
+// board area, with a dark backdrop so it stays readable regardless of what's underneath.
+void drawBanner(Img& frame, const CoordinateMapper& mapper, const std::string& text);
+
 }  // namespace kungfu

@@ -9,9 +9,11 @@
 #include "engine/GameEngine.hpp"
 #include "input/Controller.hpp"
 #include "rules/RuleEngine.hpp"
+#include "events/GameEvents.hpp"
 
 #include "Core/CoordinateMapper.hpp"
 #include "UI_OpenCV/OpenCvView.hpp"
+#include "UI_OpenCV/SoundPlayer.hpp"
 #include "IInputHandler.hpp"
 
 using namespace kungfu;
@@ -35,6 +37,37 @@ bR bN bB bQ bK bB bN bR
 // Purely cosmetic, so it lives here rather than in Controller (which only
 // owns selection state) or GameEngine (which has no concept of "recent").
 constexpr std::chrono::milliseconds kLastMoveHighlightDuration{1000};
+
+// How long a start/end banner stays on screen after firing.
+constexpr std::chrono::milliseconds kBannerDuration{1800};
+
+// Tracks the most recent game-lifecycle banner (if any) that's still fresh enough to
+// show - same "remember it, expire it after a fixed duration" shape as
+// BoardClickHandler::recentMove() below, just not tied to clicks.
+class BannerTracker {
+public:
+    void show(std::string text) {
+        text_ = std::move(text);
+        shownAt_ = std::chrono::steady_clock::now();
+    }
+
+    Banner current() const {
+        Banner banner;
+        if (!text_.has_value()) {
+            return banner;
+        }
+        if (std::chrono::steady_clock::now() - shownAt_ > kBannerDuration) {
+            return banner;
+        }
+        banner.visible = true;
+        banner.text = *text_;
+        return banner;
+    }
+
+private:
+    std::optional<std::string> text_;
+    std::chrono::steady_clock::time_point shownAt_;
+};
 
 // Translates raw pixel clicks from the view into board-cell clicks on the
 // controller, and separately remembers the most recent accepted move/jump
@@ -83,25 +116,8 @@ private:
     std::chrono::steady_clock::time_point lastMoveAt_;
 };
 
-// Builds this frame's side-panel data from GameEngine's running GameRecord.
-// Player 1 is White (right panel), Player 2 is Black (left panel), matching
-// the reference layout.
-Scoreboard buildScoreboard(const GameEngine& game) {
-    Scoreboard scoreboard;
-    scoreboard.white.name = "white";
-    scoreboard.black.name = "black";
-
-    const auto& record = game.gameRecord();
-    scoreboard.white.score = record.scoreFor(PlayerColor::White);
-    scoreboard.black.score = record.scoreFor(PlayerColor::Black);
-
-    for (const auto& move : record.movesFor(PlayerColor::White)) {
-        scoreboard.white.moves.push_back({static_cast<double>(move.elapsedMs), move.notation});
-    }
-    for (const auto& move : record.movesFor(PlayerColor::Black)) {
-        scoreboard.black.moves.push_back({static_cast<double>(move.elapsedMs), move.notation});
-    }
-    return scoreboard;
+PlayerPanel& panelFor(Scoreboard& scoreboard, PlayerColor color) {
+    return color == PlayerColor::White ? scoreboard.white : scoreboard.black;
 }
 
 }  // namespace
@@ -116,7 +132,6 @@ int main() {
 
     auto ruleEngine = std::make_shared<RuleEngine>(board);
     auto game = std::make_shared<GameEngine>(board, ruleEngine);
-    game->start();
 
     auto controller = std::make_shared<Controller>(game);
 
@@ -131,6 +146,36 @@ int main() {
     auto clickHandler = std::make_shared<BoardClickHandler>(*controller, view.mapper());
     view.setInputHandler(clickHandler);
     view.init();
+
+    // The side panels are now built once, here, and kept up to date by the
+    // subscribers below instead of being rebuilt from GameRecord every
+    // frame - the same shape a future networked client will use once it's
+    // building its panels from events received over the wire instead of a
+    // local GameEngine's bus.
+    Scoreboard scoreboard;
+    scoreboard.white.name = "white";
+    scoreboard.black.name = "black";
+
+    SoundPlayer sounds;
+    BannerTracker banner;
+
+    game->onMoveStarted().subscribe([&](const MoveStarted& event) {
+        panelFor(scoreboard, event.color).moves.push_back({static_cast<double>(event.elapsedMs), event.notation});
+        sounds.play("UI/assets/sounds/move.wav");
+    });
+    game->onPieceCaptured().subscribe([&](const PieceCaptured& event) {
+        panelFor(scoreboard, event.capturingColor).score += pieceValue(event.capturedType);
+        sounds.play("UI/assets/sounds/capture.wav");
+    });
+    game->onGameStarted().subscribe([&](const GameStarted&) {
+        banner.show("GAME START");
+    });
+    game->onGameEnded().subscribe([&](const GameEnded& event) {
+        banner.show(event.winner == PlayerColor::White ? "WHITE WINS" : "BLACK WINS");
+        sounds.play("UI/assets/sounds/game_end.wav");
+    });
+
+    game->start();
 
     while (view.isOpen()) {
         controller->handleTimePassed(16);
@@ -149,7 +194,7 @@ int main() {
             highlight.lastMoveToCol = recent->second.col();
         }
 
-        view.render(game->getRenderState(), highlight, buildScoreboard(*game));
+        view.render(game->getRenderState(), highlight, scoreboard, banner.current());
     }
 
     return 0;

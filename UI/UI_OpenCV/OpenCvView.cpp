@@ -32,7 +32,7 @@ void OpenCvView::drawStaticBackground() {
 }
 
 void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighlight& highlight,
-                         const Scoreboard& scoreboard) {
+                         const Scoreboard& scoreboard, const Banner& banner) {
     Img frame = boardImg_.clone();
 
     drawPlayerPanel(frame, scoreboard.black, 0, sidePanelWidth_, height_);
@@ -51,6 +51,10 @@ void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighl
 
     for (const auto& rp : pieces) {
         drawPiece(frame, rp, assets_, animator_, mapper_);
+    }
+
+    if (banner.visible) {
+        drawBanner(frame, mapper_, banner.text);
     }
 
     cv::imshow(windowName_, frame.get_mat());

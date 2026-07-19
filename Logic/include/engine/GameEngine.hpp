@@ -12,6 +12,8 @@
 #include "rules/IRuleEngine.hpp"
 #include "realtime/RealTimeArbiter.hpp"
 #include "history/GameRecord.hpp"
+#include "events/EventBus.hpp"
+#include "events/GameEvents.hpp"
 
 // Forward-declare render struct from Core_Interfaces to avoid direct header dependency
 namespace kungfu { struct RenderPiece; }
@@ -118,12 +120,28 @@ public:
     // are accepted and captures resolve. See history/GameRecord.hpp.
     const GameRecord& gameRecord() const { return record_; }
 
+    // Pub/sub access for anything that wants to react to what just happened - the local
+    // UI (score panel, move log, sound, start/end banners) today; a network relay
+    // broadcasting to remote clients later. See events/GameEvents.hpp for payloads.
+    EventBus<MoveStarted>& onMoveStarted() { return moveBus_; }
+    EventBus<PieceCaptured>& onPieceCaptured() { return captureBus_; }
+    EventBus<GameStarted>& onGameStarted() { return startBus_; }
+    EventBus<GameEnded>& onGameEnded() { return endBus_; }
+
 private:
     GameState state_;
     std::shared_ptr<IBoard> board_;
     std::shared_ptr<IRuleEngine> ruleEngine_;
     MovementSystem movementSystem_;
     GameRecord record_;
+
+    // Declared before arbiter_ so captureBus_ is fully constructed by the time arbiter_'s
+    // constructor takes a reference to it (C++ initializes members in declaration order,
+    // regardless of the constructor's initializer-list order).
+    EventBus<MoveStarted> moveBus_;
+    EventBus<PieceCaptured> captureBus_;
+    EventBus<GameStarted> startBus_;
+    EventBus<GameEnded> endBus_;
 
     // All real-time move/cooldown/airborne timing is delegated to the Arbiter.
     std::unique_ptr<RealTimeArbiter> arbiter_;

@@ -9,9 +9,11 @@ namespace kungfu {
 
 RealTimeArbiter::RealTimeArbiter(std::shared_ptr<IBoard> board,
                                   std::shared_ptr<IRuleEngine> ruleEngine,
+                                  EventBus<PieceCaptured>& captureBus,
                                   double speedMultiplier)
     : board_(std::move(board)),
       ruleEngine_(std::move(ruleEngine)),
+      captureBus_(captureBus),
       msPerCell_(static_cast<int>(GameConfig::kMsPerCell / speedMultiplier)),
       cooldownMs_(static_cast<int>(GameConfig::kBaseCooldownMs / speedMultiplier)),
       airborneMs_(static_cast<int>(GameConfig::kBaseAirborneMs / speedMultiplier)),
@@ -150,19 +152,13 @@ void RealTimeArbiter::beginAirborne(uintptr_t pieceId) {
     airborneEntries_.push_back({pieceId, currentTimeMs_ + airborneMs_});
 }
 
-void RealTimeArbiter::recordCapture(PlayerColor capturingColor, PieceType capturedType) {
-    captureEvents_.push_back({capturingColor, capturedType});
-}
-
-std::vector<CaptureEvent> RealTimeArbiter::drainCaptureEvents() {
-    std::vector<CaptureEvent> events;
-    events.swap(captureEvents_);
-    return events;
+void RealTimeArbiter::recordCapture(PlayerColor capturingColor, PieceType capturedType, const Position& at) {
+    captureBus_.publish({capturingColor, capturedType, at});
 }
 
 void RealTimeArbiter::resolveAirborneCounterKill(PendingMove& pm, Piece* attacker, Piece* airbornePiece) {
     const bool attackerWasKing = (attacker->type() == PieceType::King);
-    recordCapture(airbornePiece->color(), attacker->type());
+    recordCapture(airbornePiece->color(), attacker->type(), pm.currentPos);
     board_->removePiece(pm.currentPos);
     pm.active = false;
     beginShortRest(airbornePiece);
@@ -214,7 +210,7 @@ bool RealTimeArbiter::resolveKnightArrival(PendingMove& pm, Piece* currentPiece)
         }
 
         const bool capturedKing = (target->type() == PieceType::King);
-        recordCapture(currentPiece->color(), target->type());
+        recordCapture(currentPiece->color(), target->type(), pm.to);
         board_->removePiece(pm.to);
         board_->movePiece(pm.currentPos, pm.to);
         pm.currentPos = pm.to;
@@ -273,7 +269,7 @@ bool RealTimeArbiter::resolveStepMove(PendingMove& pm, Piece* currentPiece) {
                 // the two started moving first. The winner stops right here
                 // rather than continuing toward its own original target.
                 target->setState(PieceState::Captured);
-                recordCapture(currentPiece->color(), target->type());
+                recordCapture(currentPiece->color(), target->type(), nextPos);
                 board_->removePiece(nextPos);
                 otherPm->active = false;
 
@@ -299,7 +295,7 @@ bool RealTimeArbiter::resolveStepMove(PendingMove& pm, Piece* currentPiece) {
                 // Capturing a stationary enemy ends the slide here, exactly
                 // like standard chess.
                 bool capturedKing = (target->type() == PieceType::King);
-                recordCapture(currentPiece->color(), target->type());
+                recordCapture(currentPiece->color(), target->type(), nextPos);
 
                 // Any other pending move that was also racing toward this
                 // now-captured square stops too.
