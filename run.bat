@@ -1,5 +1,7 @@
 @echo off
-REM Double-click this file (or run it from any terminal) to launch the app.
+REM Double-click this file (or run it from any terminal) to launch the client.
+REM This connects to a server over the network - run run_server.bat FIRST (on this
+REM machine or another one), or this will sit at "Connecting to ws://..." forever.
 REM It always runs from the repo root, regardless of where it was started from,
 REM because the app loads assets (UI\assets\...) via paths relative to the repo root.
 
@@ -15,7 +17,9 @@ if not exist build\kungfu_app.exe (
 )
 
 echo Starting Kung Fu Chess...
-build\kungfu_app.exe
+REM Optional first argument: the server's address (default 127.0.0.1, i.e. same machine).
+REM Example, connecting to a server on another computer: run.bat 192.168.1.42
+build\kungfu_app.exe %1
 echo.
 echo App exited with code %ERRORLEVEL%.
 pause
