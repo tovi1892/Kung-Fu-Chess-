@@ -4,16 +4,22 @@
 #include <iomanip>
 #include <sstream>
 
+#include "RenderConfig.hpp"
+
 namespace kungfu {
 
 namespace {
 
+constexpr int kMsPerSecond = 1000;
+constexpr int kSecondsPerMinute = 60;
+constexpr int kMsPerMinute = kMsPerSecond * kSecondsPerMinute;
+
 // mm:ss.mmm, matching the reference layout's TIME column.
 std::string formatElapsed(double elapsedMs) {
     const int totalMs = static_cast<int>(elapsedMs);
-    const int minutes = totalMs / 60000;
-    const int seconds = (totalMs / 1000) % 60;
-    const int millis = totalMs % 1000;
+    const int minutes = totalMs / kMsPerMinute;
+    const int seconds = (totalMs / kMsPerSecond) % kSecondsPerMinute;
+    const int millis = totalMs % kMsPerSecond;
 
     std::ostringstream oss;
     oss << std::setfill('0') << std::setw(2) << minutes << ':'
@@ -37,29 +43,40 @@ void drawPlayerPanel(Img& frame, const PlayerPanel& panel, int panelX, int panel
     };
 
     const std::string name = panel.name.empty() ? std::string("Player") : panel.name;
-    frame.put_text(name, centeredX(name, 0.65, 2), 34, 0.65, kNameColor, 2);
+    frame.put_text(name, centeredX(name, RenderConfig::kPanelNameFontSize, RenderConfig::kPanelNameTextThickness),
+                    RenderConfig::kPanelNameYPx, RenderConfig::kPanelNameFontSize, kNameColor,
+                    RenderConfig::kPanelNameTextThickness);
 
     const std::string scoreText = "Score: " + std::to_string(panel.score);
-    frame.put_text(scoreText, centeredX(scoreText, 0.45, 1), 60, 0.45, kScoreColor, 1);
+    frame.put_text(scoreText,
+                    centeredX(scoreText, RenderConfig::kPanelScoreFontSize, RenderConfig::kPanelScoreTextThickness),
+                    RenderConfig::kPanelScoreYPx, RenderConfig::kPanelScoreFontSize, kScoreColor,
+                    RenderConfig::kPanelScoreTextThickness);
 
-    const int headerY = 95;
-    const int timeColX = panelX + 18;
-    const int moveColX = panelX + panelWidth / 2 + 10;
-    frame.put_text("TIME", timeColX, headerY, 0.42, kHeaderColor, 1);
-    frame.put_text("MOVE", moveColX, headerY, 0.42, kHeaderColor, 1);
-    frame.draw_rect(panelX + 10, headerY + 8, panelWidth - 20, 1, kDividerColor);
+    const int headerY = RenderConfig::kPanelHeaderYPx;
+    const int timeColX = panelX + RenderConfig::kPanelTimeColumnOffsetPx;
+    const int moveColX = panelX + panelWidth / 2 + RenderConfig::kPanelMoveColumnOffsetPx;
+    frame.put_text("TIME", timeColX, headerY, RenderConfig::kPanelHeaderFontSize, kHeaderColor,
+                    RenderConfig::kPanelHeaderTextThickness);
+    frame.put_text("MOVE", moveColX, headerY, RenderConfig::kPanelHeaderFontSize, kHeaderColor,
+                    RenderConfig::kPanelHeaderTextThickness);
+    frame.draw_rect(panelX + RenderConfig::kPanelDividerXInsetPx, headerY + RenderConfig::kPanelDividerYOffsetPx,
+                     panelWidth - RenderConfig::kPanelDividerWidthInsetPx, RenderConfig::kPanelDividerThicknessPx,
+                     kDividerColor);
 
-    const int rowStartY = headerY + 28;
-    const int rowHeight = 20;
-    const int maxRows = std::max(0, (panelHeight - rowStartY - 12) / rowHeight);
+    const int rowStartY = headerY + RenderConfig::kPanelRowStartYOffsetPx;
+    const int rowHeight = RenderConfig::kPanelRowHeightPx;
+    const int maxRows = std::max(0, (panelHeight - rowStartY - RenderConfig::kPanelBottomPaddingPx) / rowHeight);
 
     const int total = static_cast<int>(panel.moves.size());
     const int startIndex = std::max(0, total - maxRows);
     int y = rowStartY;
     for (int i = startIndex; i < total; ++i) {
         const auto& entry = panel.moves[i];
-        frame.put_text(formatElapsed(entry.elapsedMs), timeColX, y, 0.4, kMoveColor, 1);
-        frame.put_text(entry.notation, moveColX, y, 0.4, kMoveColor, 1);
+        frame.put_text(formatElapsed(entry.elapsedMs), timeColX, y, RenderConfig::kPanelMoveRowFontSize, kMoveColor,
+                        RenderConfig::kPanelMoveRowTextThickness);
+        frame.put_text(entry.notation, moveColX, y, RenderConfig::kPanelMoveRowFontSize, kMoveColor,
+                        RenderConfig::kPanelMoveRowTextThickness);
         y += rowHeight;
     }
 }

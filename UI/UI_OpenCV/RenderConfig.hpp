@@ -35,6 +35,34 @@ struct RenderConfig {
     static constexpr int kBannerPaddingYPx = 18;
     static constexpr int kBannerTextLineHeightPx = 34;
     static constexpr int kBannerTextBaselineOffsetPx = 10;
+
+    // --- Scoreboard side panel ---
+    static constexpr double kPanelNameFontSize = 0.65;
+    static constexpr int kPanelNameTextThickness = 2;
+    static constexpr int kPanelNameYPx = 34;
+
+    static constexpr double kPanelScoreFontSize = 0.45;
+    static constexpr int kPanelScoreTextThickness = 1;
+    static constexpr int kPanelScoreYPx = 60;
+
+    static constexpr double kPanelHeaderFontSize = 0.42;
+    static constexpr int kPanelHeaderTextThickness = 1;
+    static constexpr int kPanelHeaderYPx = 95;
+
+    static constexpr int kPanelTimeColumnOffsetPx = 18;
+    static constexpr int kPanelMoveColumnOffsetPx = 10;
+
+    static constexpr int kPanelDividerXInsetPx = 10;
+    static constexpr int kPanelDividerYOffsetPx = 8;
+    static constexpr int kPanelDividerWidthInsetPx = 20;
+    static constexpr int kPanelDividerThicknessPx = 1;
+
+    static constexpr int kPanelRowStartYOffsetPx = 28;
+    static constexpr int kPanelRowHeightPx = 20;
+    static constexpr int kPanelBottomPaddingPx = 12;
+
+    static constexpr double kPanelMoveRowFontSize = 0.4;
+    static constexpr int kPanelMoveRowTextThickness = 1;
 };
 
 }  // namespace kungfu
