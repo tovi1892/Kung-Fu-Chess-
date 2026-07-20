@@ -7,15 +7,9 @@ namespace kungfu {
 namespace {
 
 char pieceLetter(PieceType type) {
-    switch (type) {
-        case PieceType::King:   return 'K';
-        case PieceType::Queen:  return 'Q';
-        case PieceType::Rook:   return 'R';
-        case PieceType::Bishop: return 'B';
-        case PieceType::Knight: return 'N';
-        case PieceType::Pawn:   return '\0';
-    }
-    return '\0';
+    // Chess notation omits the pawn's letter entirely - every other type
+    // uses the shared canonical code.
+    return type == PieceType::Pawn ? '\0' : pieceTypeChar(type);
 }
 
 std::string squareName(const Position& pos) {

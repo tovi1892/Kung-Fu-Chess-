@@ -8,14 +8,7 @@ namespace kungfu {
 std::string BoardPrinter::pieceToken(const Piece* piece) {
     if (!piece) return ".";
     std::string token = (piece->color() == PlayerColor::White) ? "w" : "b";
-    switch (piece->type()) {
-        case PieceType::King:   token += "K"; break;
-        case PieceType::Queen:  token += "Q"; break;
-        case PieceType::Rook:   token += "R"; break;
-        case PieceType::Bishop: token += "B"; break;
-        case PieceType::Knight: token += "N"; break;
-        case PieceType::Pawn:   token += "P"; break;
-    }
+     token += pieceTypeChar(piece->type());
     return token;
 }
 

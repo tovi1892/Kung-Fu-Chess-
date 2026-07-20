@@ -1,6 +1,7 @@
 #include "UsernamePrompt.hpp"
 
 #include <cctype>
+#include <iostream>
 
 #include <windows.h>
 
@@ -87,6 +88,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     return DefWindowProcA(hwnd, msg, wParam, lParam);
 }
 
+// Used only if the native window can't be created at all (see show()) - so the app
+// always has *some* way to get a username instead of silently hanging forever with no
+// visible window and no explanation.
+std::optional<std::string> promptOnConsole() {
+    std::cout << "(Couldn't open a native window here - type a username instead.)\n"
+                 "Username (blank to cancel): "
+              << std::flush;
+    std::string line;
+    if (!std::getline(std::cin, line)) {
+        return std::nullopt;
+    }
+    const std::string cleaned = sanitize(line);
+    return cleaned.empty() ? std::nullopt : std::make_optional(cleaned);
+}
+
 }  // namespace
 
 std::optional<std::string> UsernamePrompt::show() {
@@ -99,12 +115,24 @@ std::optional<std::string> UsernamePrompt::show() {
     wc.lpszClassName = className;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
-    RegisterClassA(&wc);
 
-    HWND hwnd = CreateWindowExA(0, className, "Kung Fu Chess - Join", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-                                 CW_USEDEFAULT, CW_USEDEFAULT, kWindowWidth, kWindowHeight, nullptr, nullptr,
-                                 wc.hInstance, &state);
+    if (!RegisterClassA(&wc)) {
+        std::cerr << "[UsernamePrompt] RegisterClassA failed, error " << GetLastError() << std::endl;
+        return promptOnConsole();
+    }
+
+    HWND hwnd = CreateWindowExA(0, className, "Kung Fu Chess - Join",
+                                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT,
+                                 CW_USEDEFAULT, kWindowWidth, kWindowHeight, nullptr, nullptr, wc.hInstance,
+                                 &state);
+    if (!hwnd) {
+        std::cerr << "[UsernamePrompt] CreateWindowExA failed, error " << GetLastError() << std::endl;
+        UnregisterClassA(className, wc.hInstance);
+        return promptOnConsole();
+    }
+
     ShowWindow(hwnd, SW_SHOW);
+    SetForegroundWindow(hwnd);
 
     MSG msg;
     while (!state.done && GetMessage(&msg, nullptr, 0, 0)) {

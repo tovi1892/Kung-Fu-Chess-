@@ -40,17 +40,8 @@ bool extractBoolField(const std::string& json, const std::string& key) {
 }  // namespace
 
 std::string AssetManager::folderName(PieceType type, PlayerColor color) {
-    char kind = '?';
-    switch (type) {
-        case PieceType::King:   kind = 'K'; break;
-        case PieceType::Queen:  kind = 'Q'; break;
-        case PieceType::Rook:   kind = 'R'; break;
-        case PieceType::Bishop: kind = 'B'; break;
-        case PieceType::Knight: kind = 'N'; break;
-        case PieceType::Pawn:   kind = 'P'; break;
-    }
     const char colorCh = (color == PlayerColor::White) ? 'W' : 'B';
-    return std::string(1, kind) + std::string(1, colorCh);
+    return std::string(1, pieceTypeChar(type)) + std::string(1, colorCh);
 }
 
 SpriteSequence AssetManager::loadSequence(const std::string& pieceFolder, const std::string& stateName,
