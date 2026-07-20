@@ -6,6 +6,11 @@
 
 namespace kungfu {
 
+namespace {
+// OpenCV doesn't provide a named constant for this - 27 is Escape's ASCII code.
+constexpr int kEscapeKeyCode = 27;
+}  // namespace
+
 OpenCvView::OpenCvView(int boardSize, int sidePanelWidth)
     : boardSize_(boardSize), sidePanelWidth_(sidePanelWidth),
       width_(sidePanelWidth_ * 2 + boardSize_), height_(boardSize_),
@@ -27,8 +32,9 @@ void OpenCvView::drawStaticBackground() {
     drawCheckerboardAndLabels(boardImg_, mapper_);
 
     static const cv::Scalar kDividerColor(75, 75, 75);
-    boardImg_.draw_rect(sidePanelWidth_ - 1, 0, 1, height_, kDividerColor);
-    boardImg_.draw_rect(sidePanelWidth_ + boardSize_, 0, 1, height_, kDividerColor);
+    boardImg_.draw_rect(sidePanelWidth_ - RenderConfig::kDividerThicknessPx, 0, RenderConfig::kDividerThicknessPx,
+                         height_, kDividerColor);
+    boardImg_.draw_rect(sidePanelWidth_ + boardSize_, 0, RenderConfig::kDividerThicknessPx, height_, kDividerColor);
 }
 
 void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighlight& highlight,
@@ -59,8 +65,8 @@ void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighl
 
     cv::imshow(windowName_, frame.get_mat());
 
-    const int key = cv::waitKey(16);
-    if (key == 27 || cv::getWindowProperty(windowName_, cv::WND_PROP_VISIBLE) < 1) {
+    const int key = cv::waitKey(RenderConfig::kFrameWaitMs);
+    if (key == kEscapeKeyCode || cv::getWindowProperty(windowName_, cv::WND_PROP_VISIBLE) < 1) {
         closed_ = true;
     }
 }

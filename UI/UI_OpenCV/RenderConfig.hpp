@@ -79,6 +79,15 @@ struct RenderConfig {
     static constexpr int kUsernamePromptButtonY = 90;
     static constexpr int kUsernamePromptButtonWidth = 100;
     static constexpr int kUsernamePromptButtonHeight = 30;
+
+    // --- OpenCvView window ---
+    static constexpr int kDefaultWindowBoardSizePx = 800;
+    static constexpr int kDefaultSidePanelWidthPx = 260;
+    static constexpr int kDividerThicknessPx = 1;
+    // How long the render loop's cv::waitKey blocks per frame - the same concept as
+    // Server/main.cpp's kTickMs (coincidentally the same value), but this is client-
+    // side frame pacing for polling input/repainting, not the server's simulation tick.
+    static constexpr int kFrameWaitMs = 16;
 };
 
 }  // namespace kungfu

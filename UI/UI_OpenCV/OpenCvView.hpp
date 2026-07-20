@@ -5,6 +5,7 @@
 #include "AssetManager.hpp"
 #include "Core/PieceAnimator.hpp"
 #include "Core/CoordinateMapper.hpp"
+#include "RenderConfig.hpp"
 #include <string>
 
 namespace kungfu {
@@ -15,7 +16,8 @@ namespace kungfu {
 // extent, sidePanelWidth each panel's width.
 class OpenCvView : public IGameView {
 public:
-    OpenCvView(int boardSize = 800, int sidePanelWidth = 260);
+    OpenCvView(int boardSize = RenderConfig::kDefaultWindowBoardSizePx,
+               int sidePanelWidth = RenderConfig::kDefaultSidePanelWidthPx);
     ~OpenCvView() override = default;
 
     void init() override;
