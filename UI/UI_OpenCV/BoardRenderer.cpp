@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <string>
 
+#include "RenderConfig.hpp"
+
 namespace kungfu {
 
 void drawCheckerboardAndLabels(Img& target, const CoordinateMapper& mapper) {
@@ -27,21 +29,25 @@ void drawCheckerboardAndLabels(Img& target, const CoordinateMapper& mapper) {
     static const cv::Scalar kLabelColor(215, 215, 215);
     for (int c = 0; c < cols; ++c) {
         const std::string label(1, static_cast<char>('a' + c));
-        const int x = mapper.cellTopLeftX(c) + mapper.cellWidth() / 2 - 5;
-        target.put_text(label, x, mapper.offsetY() + margin - 12, 0.5, kLabelColor, 1);
-        target.put_text(label, x, mapper.offsetY() + mapper.boardHeight() - margin + 24, 0.5, kLabelColor, 1);
+        const int x = mapper.cellTopLeftX(c) + mapper.cellWidth() / 2 + RenderConfig::kLabelHorizontalCenteringOffsetPx;
+        target.put_text(label, x, mapper.offsetY() + margin + RenderConfig::kFileLabelTopOffsetPx,
+                         RenderConfig::kLabelFontSize, kLabelColor, RenderConfig::kLabelTextThickness);
+        target.put_text(label, x, mapper.offsetY() + mapper.boardHeight() - margin + RenderConfig::kFileLabelBottomOffsetPx,
+                         RenderConfig::kLabelFontSize, kLabelColor, RenderConfig::kLabelTextThickness);
     }
     for (int r = 0; r < rows; ++r) {
         const std::string label = std::to_string(rows - r);
-        const int y = mapper.cellTopLeftY(r) + mapper.cellHeight() / 2 + 5;
-        target.put_text(label, mapper.offsetX() + margin / 2 - 5, y, 0.5, kLabelColor, 1);
-        target.put_text(label, mapper.offsetX() + mapper.boardWidth() - margin / 2 - 5, y, 0.5, kLabelColor, 1);
+        const int y = mapper.cellTopLeftY(r) + mapper.cellHeight() / 2 + RenderConfig::kRankLabelVerticalCenteringOffsetPx;
+        target.put_text(label, mapper.offsetX() + margin / 2 + RenderConfig::kLabelHorizontalCenteringOffsetPx, y,
+                         RenderConfig::kLabelFontSize, kLabelColor, RenderConfig::kLabelTextThickness);
+        target.put_text(label, mapper.offsetX() + mapper.boardWidth() - margin / 2 + RenderConfig::kLabelHorizontalCenteringOffsetPx,
+                         y, RenderConfig::kLabelFontSize, kLabelColor, RenderConfig::kLabelTextThickness);
     }
 }
 
 void drawCellOutline(Img& frame, const CoordinateMapper& mapper, int row, int col, const cv::Scalar& color) {
     frame.draw_rect_outline(mapper.cellTopLeftX(col), mapper.cellTopLeftY(row),
-                             mapper.cellWidth(), mapper.cellHeight(), color, 3);
+                             mapper.cellWidth(), mapper.cellHeight(), color, RenderConfig::kHighlightOutlineThickness);
 }
 
 namespace {
@@ -59,14 +65,15 @@ void drawRestRing(Img& frame, const CoordinateMapper& mapper, int cellPx, int ce
     static const cv::Scalar kReadyColor(40, 210, 255);   // gold - about to become selectable
 
     const double fraction = std::clamp(1.0 - (remainingMs / totalMs), 0.0, 1.0);
-    const int radius = std::min(mapper.cellWidth(), mapper.cellHeight()) / 2 - 4;
+    const int radius = std::min(mapper.cellWidth(), mapper.cellHeight()) / 2 - RenderConfig::kRestRingInsetPx;
     const int centerX = cellPx + mapper.cellWidth() / 2;
     const int centerY = cellPy + mapper.cellHeight() / 2;
 
-    frame.draw_arc(centerX, centerY, radius, 0.0, 360.0, kTrackColor, 3);
+    frame.draw_arc(centerX, centerY, radius, 0.0, 360.0, kTrackColor, RenderConfig::kRestRingTrackThickness);
 
-    const double endAngleDeg = -90.0 + fraction * 360.0;
-    frame.draw_arc(centerX, centerY, radius, -90.0, endAngleDeg, lerpColor(kStartColor, kReadyColor, fraction), 4);
+    const double endAngleDeg = RenderConfig::kRestRingStartAngleDeg + fraction * 360.0;
+    frame.draw_arc(centerX, centerY, radius, RenderConfig::kRestRingStartAngleDeg, endAngleDeg,
+                    lerpColor(kStartColor, kReadyColor, fraction), RenderConfig::kRestRingProgressThickness);
 }
 
 void drawPiece(Img& frame, const RenderPiece& rp, AssetManager& assets, PieceAnimator& animator,
@@ -99,19 +106,20 @@ void drawBanner(Img& frame, const CoordinateMapper& mapper, const std::string& t
     static const cv::Scalar kBackdrop(20, 20, 20);
     static const cv::Scalar kTextColor(235, 235, 235);
 
-    const double fontSize = 1.0;
-    const int thickness = 2;
+    const double fontSize = RenderConfig::kBannerFontSize;
+    const int thickness = RenderConfig::kBannerTextThickness;
     const int textWidth = frame.text_width(text, fontSize, thickness);
 
     const int centerX = mapper.offsetX() + mapper.boardWidth() / 2;
     const int centerY = mapper.offsetY() + mapper.boardHeight() / 2;
-    const int paddingX = 24;
-    const int paddingY = 18;
+    const int paddingX = RenderConfig::kBannerPaddingXPx;
+    const int paddingY = RenderConfig::kBannerPaddingYPx;
     const int boxWidth = textWidth + 2 * paddingX;
-    const int boxHeight = 34 + 2 * paddingY;
+    const int boxHeight = RenderConfig::kBannerTextLineHeightPx + 2 * paddingY;
 
     frame.draw_rect(centerX - boxWidth / 2, centerY - boxHeight / 2, boxWidth, boxHeight, kBackdrop);
-    frame.put_text(text, centerX - textWidth / 2, centerY + 10, fontSize, kTextColor, thickness);
+    frame.put_text(text, centerX - textWidth / 2, centerY + RenderConfig::kBannerTextBaselineOffsetPx, fontSize,
+                    kTextColor, thickness);
 }
 
 }  // namespace kungfu
