@@ -9,6 +9,22 @@ namespace kungfu {
 
 namespace {
 
+// Unit (row delta, col delta) steps for each compass-ish direction on the board grid -
+// shared by every sliding/stepping piece's legalDestinations below. Not tied to a
+// player's color; PawnRules' forward direction is a separate, color-dependent case.
+constexpr std::pair<int, int> kUp{-1, 0};
+constexpr std::pair<int, int> kDown{1, 0};
+constexpr std::pair<int, int> kLeft{0, -1};
+constexpr std::pair<int, int> kRight{0, 1};
+constexpr std::pair<int, int> kUpLeft{-1, -1};
+constexpr std::pair<int, int> kUpRight{-1, 1};
+constexpr std::pair<int, int> kDownLeft{1, -1};
+constexpr std::pair<int, int> kDownRight{1, 1};
+
+// The 8 L-shaped knight jumps: two squares along one axis, one along the other.
+const std::vector<std::pair<int, int>> kKnightOffsets{
+    {2, 1}, {2, -1}, {-2, 1}, {-2, -1}, {1, 2}, {1, -2}, {-1, 2}, {-1, -2}};
+
 bool isInBounds(const IBoard& board, const Position& pos) {
     return pos.row() >= 0 && pos.row() < board.rows() &&
            pos.col() >= 0 && pos.col() < board.cols();
@@ -74,13 +90,13 @@ void collectSteppedDestinations(const IBoard& board,
 
 std::set<Position> RookRules::legalDestinations(const IBoard& board, const Piece& piece) const {
     std::set<Position> out;
-    collectSlidingDestinations(board, piece, {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}, out);
+    collectSlidingDestinations(board, piece, {kDown, kUp, kRight, kLeft}, out);
     return out;
 }
 
 std::set<Position> BishopRules::legalDestinations(const IBoard& board, const Piece& piece) const {
     std::set<Position> out;
-    collectSlidingDestinations(board, piece, {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}}, out);
+    collectSlidingDestinations(board, piece, {kDownRight, kDownLeft, kUpRight, kUpLeft}, out);
     return out;
 }
 
@@ -88,23 +104,20 @@ std::set<Position> QueenRules::legalDestinations(const IBoard& board, const Piec
     std::set<Position> out;
     collectSlidingDestinations(
         board, piece,
-        {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}, out);
+        {kDown, kUp, kRight, kLeft, kDownRight, kDownLeft, kUpRight, kUpLeft}, out);
     return out;
 }
 
 std::set<Position> KnightRules::legalDestinations(const IBoard& board, const Piece& piece) const {
     std::set<Position> out;
-    collectSteppedDestinations(
-        board, piece,
-        {{2, 1}, {2, -1}, {-2, 1}, {-2, -1}, {1, 2}, {1, -2}, {-1, 2}, {-1, -2}}, out);
+    collectSteppedDestinations(board, piece, kKnightOffsets, out);
     return out;
 }
 
 std::set<Position> KingRules::legalDestinations(const IBoard& board, const Piece& piece) const {
     std::set<Position> out;
     collectSteppedDestinations(
-        board, piece,
-        {{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}}, out);
+        board, piece, {kUpLeft, kUp, kUpRight, kLeft, kRight, kDownLeft, kDown, kDownRight}, out);
     return out;
 }
 
@@ -141,7 +154,9 @@ std::set<Position> PawnRules::legalDestinations(const IBoard& board, const Piece
         }
     }
 
-    for (int dc : {-1, 1}) {
+    // Reuses the same left/right column deltas named above, rather than repeating -1/1
+    // as unnamed literals here too.
+    for (int dc : {kLeft.second, kRight.second}) {
         const Position capture(from.row() + forward, from.col() + dc);
         if (!isInBounds(board, capture)) {
             continue;
