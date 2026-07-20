@@ -2,6 +2,10 @@
 #include <iostream>
 #include <stdexcept>
 
+namespace {
+constexpr int kWaitKeyIndefinitely = 0;
+}  // namespace
+
 Img::Img() {}
 
 Img& Img::read(const std::string& path,
@@ -176,6 +180,6 @@ void Img::show() {
     }
     
     cv::imshow("Image", img);
-    cv::waitKey(0);
+    cv::waitKey(kWaitKeyIndefinitely);
     cv::destroyAllWindows();
 } 
