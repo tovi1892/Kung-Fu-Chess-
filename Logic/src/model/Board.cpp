@@ -1,11 +1,12 @@
 #include "model/Board.hpp"
 #include "IGameView.hpp"
+#include "model/GameConfig.hpp"
 #include <cstdint>
 #include <algorithm>
 
 namespace kungfu {
 
-Board::Board() : rows_(8), cols_(8) {}
+Board::Board() : rows_(GameConfig::kBoardSize), cols_(GameConfig::kBoardSize) {}
 
 Board::Board(int rows, int cols) : rows_(rows), cols_(cols) {}
 

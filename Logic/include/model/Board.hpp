@@ -4,6 +4,7 @@
 #include <vector>
 #include "model/IBoard.hpp"
 #include "model/Enums.hpp"
+#include "model/GameConfig.hpp"
 #include "model/Position.hpp"
 #include "model/pieces/Piece.hpp"
 
@@ -41,8 +42,8 @@ public:
 
 private:
     std::vector<std::unique_ptr<Piece>> pieces_;
-    int rows_ = 8;
-    int cols_ = 8;
+    int rows_ = GameConfig::kBoardSize;
+    int cols_ = GameConfig::kBoardSize;
 };
 
 }  // namespace kungfu
