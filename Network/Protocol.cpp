@@ -8,21 +8,17 @@ namespace kungfu::net {
 
 namespace {
 
+// Decimal digits of precision for a piece's fractional x/y position in a STATE
+// broadcast - enough for smooth interpolation without needlessly verbose lines.
+constexpr int kCoordinatePrecisionDigits = 6;
+
 // Single-char color/type codes and 2-char "wR"-style piece tokens, matching the exact
 // convention BoardParser/BoardPrinter already use for the text board DSL.
 char colorChar(PlayerColor color) { return color == PlayerColor::White ? 'w' : 'b'; }
 PlayerColor colorFromChar(char c) { return c == 'w' ? PlayerColor::White : PlayerColor::Black; }
 
 char typeChar(PieceType type) {
-    switch (type) {
-        case PieceType::King:   return 'K';
-        case PieceType::Queen:  return 'Q';
-        case PieceType::Rook:   return 'R';
-        case PieceType::Bishop: return 'B';
-        case PieceType::Knight: return 'N';
-        case PieceType::Pawn:   return 'P';
-    }
-    return 'P';
+    return pieceTypeChar(type);
 }
 
 PieceType typeFromChar(char c) {
@@ -74,7 +70,7 @@ std::string encodePlayers(const std::string& white, const std::string& black) {
 std::string encodeState(const std::vector<RenderPiece>& pieces) {
     std::ostringstream out;
     out << "STATE\n" << std::fixed;
-    out.precision(6);
+    out.precision(kCoordinatePrecisionDigits);
     for (const auto& rp : pieces) {
         out << rp.id << " " << pieceToken(static_cast<PlayerColor>(rp.color), static_cast<PieceType>(rp.type))
             << " " << rp.x << " " << rp.y << " " << rp.state << " " << rp.cooldownMs << " "
