@@ -5,14 +5,14 @@
 
 #include <windows.h>
 
+#include "UI_OpenCV/RenderConfig.hpp"
+
 namespace kungfu {
 
 namespace {
 
 constexpr int kEditId = 101;
 constexpr int kPlayButtonId = 102;
-constexpr int kWindowWidth = 320;
-constexpr int kWindowHeight = 160;
 constexpr size_t kMaxUsernameLength = 20;
 
 // Owns the one Edit control's handle and the outcome of the prompt - set from WndProc,
@@ -51,12 +51,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
             auto* state = reinterpret_cast<PromptState*>(cs->lpCreateParams);
 
-            CreateWindowExA(0, "STATIC", "Enter a username:", WS_CHILD | WS_VISIBLE, 20, 20, 260, 20, hwnd,
-                             nullptr, cs->hInstance, nullptr);
+            CreateWindowExA(0, "STATIC", "Enter a username:", WS_CHILD | WS_VISIBLE, RenderConfig::kUsernamePromptLabelX,
+                             RenderConfig::kUsernamePromptLabelY, RenderConfig::kUsernamePromptLabelWidth,
+                             RenderConfig::kUsernamePromptLabelHeight, hwnd, nullptr, cs->hInstance, nullptr);
             state->edit = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-                                           20, 45, 260, 24, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditId)), cs->hInstance,
+                                           RenderConfig::kUsernamePromptEditX, RenderConfig::kUsernamePromptEditY,
+                                           RenderConfig::kUsernamePromptEditWidth, RenderConfig::kUsernamePromptEditHeight,
+                                           hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditId)), cs->hInstance,
                                            nullptr);
-            CreateWindowExA(0, "BUTTON", "Play", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 100, 90, 100, 30, hwnd,
+            CreateWindowExA(0, "BUTTON", "Play", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                             RenderConfig::kUsernamePromptButtonX, RenderConfig::kUsernamePromptButtonY,
+                             RenderConfig::kUsernamePromptButtonWidth, RenderConfig::kUsernamePromptButtonHeight, hwnd,
                              reinterpret_cast<HMENU>(static_cast<INT_PTR>(kPlayButtonId)), cs->hInstance, nullptr);
             SetFocus(state->edit);
             return 0;
@@ -123,8 +128,8 @@ std::optional<std::string> UsernamePrompt::show() {
 
     HWND hwnd = CreateWindowExA(0, className, "Kung Fu Chess - Join",
                                  WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT,
-                                 CW_USEDEFAULT, kWindowWidth, kWindowHeight, nullptr, nullptr, wc.hInstance,
-                                 &state);
+                                 CW_USEDEFAULT, RenderConfig::kUsernamePromptWindowWidth,
+                                 RenderConfig::kUsernamePromptWindowHeight, nullptr, nullptr, wc.hInstance, &state);
     if (!hwnd) {
         std::cerr << "[UsernamePrompt] CreateWindowExA failed, error " << GetLastError() << std::endl;
         UnregisterClassA(className, wc.hInstance);

@@ -63,6 +63,22 @@ struct RenderConfig {
 
     static constexpr double kPanelMoveRowFontSize = 0.4;
     static constexpr int kPanelMoveRowTextThickness = 1;
+
+    // --- Username prompt native window layout ---
+    static constexpr int kUsernamePromptWindowWidth = 320;
+    static constexpr int kUsernamePromptWindowHeight = 160;
+    static constexpr int kUsernamePromptLabelX = 20;
+    static constexpr int kUsernamePromptLabelY = 20;
+    static constexpr int kUsernamePromptLabelWidth = 260;
+    static constexpr int kUsernamePromptLabelHeight = 20;
+    static constexpr int kUsernamePromptEditX = 20;
+    static constexpr int kUsernamePromptEditY = 45;
+    static constexpr int kUsernamePromptEditWidth = 260;
+    static constexpr int kUsernamePromptEditHeight = 24;
+    static constexpr int kUsernamePromptButtonX = 100;
+    static constexpr int kUsernamePromptButtonY = 90;
+    static constexpr int kUsernamePromptButtonWidth = 100;
+    static constexpr int kUsernamePromptButtonHeight = 30;
 };
 
 }  // namespace kungfu
