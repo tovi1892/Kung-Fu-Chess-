@@ -6,6 +6,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 
 #include "engine/GameEngine.hpp"
@@ -38,10 +39,12 @@ bR bN bB bQ bK bB bN bR
 constexpr int kPort = 7777;
 constexpr int kTickMs = 16;
 
-// One connected player: which color they were assigned, and their own Controller. Both
-// players' Controllers wrap the *same* shared GameEngine - Controller was already
-// designed to own nothing but its own selection state, so this needs zero Logic/ changes.
+// One connected, *joined* player: their username, which color they were assigned, and
+// their own Controller. Both players' Controllers wrap the *same* shared GameEngine -
+// Controller was already designed to own nothing but its own selection state, so this
+// needs zero Logic/ changes.
 struct PlayerSession {
+    std::string username;
     PlayerColor color;
     std::shared_ptr<Controller> controller;
 };
@@ -59,10 +62,17 @@ int main() {
     auto ruleEngine = std::make_shared<RuleEngine>(board);
     auto game = std::make_shared<GameEngine>(board, ruleEngine);
 
-    // Guards every access to game/sessions below - IXWebSocket delivers connect/message/
-    // disconnect callbacks on its own background I/O thread(s), while GameEngine and
-    // Controller were built single-threaded (see the Phase 1 plan's mutex note).
+    // Guards every access to game/sessions/pendingConnections below - IXWebSocket
+    // delivers connect/message/disconnect callbacks on its own background I/O thread(s),
+    // while GameEngine and Controller were built single-threaded (see the Phase 1 plan's
+    // mutex note).
     std::mutex gameMutex;
+
+    // A connection lives here from the moment it opens until its JOIN <username> arrives
+    // (or it disconnects first) - it doesn't get a color or a Controller, and its clicks
+    // are ignored, until it has actually joined. Kept separate from `sessions` so a slow
+    // or silent connection still correctly reserves one of the two player slots.
+    std::unordered_set<WsServerTransport::ConnectionId> pendingConnections;
     std::unordered_map<WsServerTransport::ConnectionId, PlayerSession> sessions;
 
     WsServerTransport server(kPort);
@@ -79,34 +89,57 @@ int main() {
     server.onConnect([&](const WsServerTransport::ConnectionId& id) {
         std::lock_guard<std::mutex> lock(gameMutex);
 
-        if (sessions.size() >= 2) {
+        if (sessions.size() + pendingConnections.size() >= 2) {
             std::cout << "[server] rejecting extra connection " << id
                       << " (spectators are a later phase)" << std::endl;
             server.close(id);
             return;
         }
 
-        const PlayerColor color = sessions.empty() ? PlayerColor::White : PlayerColor::Black;
-        sessions[id] = PlayerSession{color, std::make_shared<Controller>(game)};
-        std::cout << "[server] connection " << id << " joined as "
-                  << (color == PlayerColor::White ? "White" : "Black") << std::endl;
-        server.send(id, encodeWelcome(color));
-
-        if (sessions.size() == 2) {
-            game->start();
-            std::cout << "[server] both players connected - game started" << std::endl;
-        }
+        pendingConnections.insert(id);
+        std::cout << "[server] connection " << id << " opened - waiting for JOIN" << std::endl;
     });
 
     server.onMessage([&](const WsServerTransport::ConnectionId& id, const std::string& text) {
         std::lock_guard<std::mutex> lock(gameMutex);
 
+        const auto decoded = decode(text);
+
+        // Still waiting to join: the only message that means anything from this
+        // connection is JOIN - anything else (e.g. a stray click before the username
+        // window closed) is ignored.
+        if (pendingConnections.count(id) > 0) {
+            const auto* join = std::get_if<JoinMessage>(&decoded);
+            if (!join) {
+                return;
+            }
+
+            pendingConnections.erase(id);
+            const PlayerColor color = sessions.empty() ? PlayerColor::White : PlayerColor::Black;
+            sessions[id] = PlayerSession{join->username, color, std::make_shared<Controller>(game)};
+            std::cout << "[server] " << join->username << " joined as "
+                      << (color == PlayerColor::White ? "White" : "Black") << std::endl;
+            server.send(id, encodeWelcome(color));
+
+            if (sessions.size() == 2) {
+                std::string whiteName, blackName;
+                for (const auto& [sessionId, session] : sessions) {
+                    (session.color == PlayerColor::White ? whiteName : blackName) = session.username;
+                }
+                server.broadcast(encodePlayers(whiteName, blackName));
+                game->start();
+                std::cout << "[server] both players joined (" << whiteName << " vs " << blackName
+                          << ") - game started" << std::endl;
+            }
+            return;
+        }
+
+        // Already joined: the only message a joined connection ever sends is a click.
         auto it = sessions.find(id);
         if (it == sessions.end()) {
             return;  // a rejected/unrecognized connection - ignore whatever it sends
         }
 
-        const auto decoded = decode(text);
         const auto* click = std::get_if<ClickMessage>(&decoded);
         if (!click) {
             return;
@@ -131,6 +164,7 @@ int main() {
 
     server.onDisconnect([&](const WsServerTransport::ConnectionId& id) {
         std::lock_guard<std::mutex> lock(gameMutex);
+        pendingConnections.erase(id);
         sessions.erase(id);
         std::cout << "[server] connection " << id << " disconnected" << std::endl;
     });

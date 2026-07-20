@@ -4,8 +4,10 @@
 
 namespace kungfu {
 
-RemoteGameProxy::RemoteGameProxy(const std::string& serverUrl) : transport_(serverUrl) {
+RemoteGameProxy::RemoteGameProxy(const std::string& serverUrl, const std::string& username)
+    : username_(username), transport_(serverUrl) {
     transport_.onMessage([this](const std::string& text) { handleMessage(text); });
+    transport_.onOpen([this]() { transport_.send(net::encodeJoin(username_)); });
     transport_.start();
 }
 
@@ -20,6 +22,9 @@ void RemoteGameProxy::handleMessage(const std::string& text) {
         std::lock_guard<std::mutex> lock(colorMutex_);
         myColor_ = welcome->color;
         hasColor_ = true;
+    } else if (const auto* players = std::get_if<net::PlayersMessage>(&decoded)) {
+        std::lock_guard<std::mutex> lock(playersMutex_);
+        players_ = KnownPlayers{players->white, players->black};
     } else if (const auto* state = std::get_if<net::StateMessage>(&decoded)) {
         std::lock_guard<std::mutex> lock(stateMutex_);
         latestState_ = state->pieces;
@@ -66,6 +71,11 @@ void RemoteGameProxy::pollEvents() {
 std::vector<RenderPiece> RemoteGameProxy::getRenderState() const {
     std::lock_guard<std::mutex> lock(stateMutex_);
     return latestState_;
+}
+
+KnownPlayers RemoteGameProxy::players() const {
+    std::lock_guard<std::mutex> lock(playersMutex_);
+    return players_;
 }
 
 bool RemoteGameProxy::hasColor() const {

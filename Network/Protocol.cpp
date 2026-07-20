@@ -55,12 +55,20 @@ std::vector<std::string> splitLines(const std::string& text) {
 
 }  // namespace
 
+std::string encodeJoin(const std::string& username) {
+    return "JOIN " + username;
+}
+
 std::string encodeClick(int row, int col) {
     return "CLICK " + std::to_string(row) + " " + std::to_string(col);
 }
 
 std::string encodeWelcome(PlayerColor color) {
     return std::string("WELCOME ") + colorChar(color);
+}
+
+std::string encodePlayers(const std::string& white, const std::string& black) {
+    return "PLAYERS " + white + " " + black;
 }
 
 std::string encodeState(const std::vector<RenderPiece>& pieces) {
@@ -111,12 +119,20 @@ DecodedMessage decode(const std::string& text) {
     }
     const std::string& cmd = tokens[0];
 
+    if (cmd == "JOIN" && tokens.size() >= 2) {
+        return JoinMessage{tokens[1]};
+    }
+
     if (cmd == "CLICK" && tokens.size() >= 3) {
         return ClickMessage{std::stoi(tokens[1]), std::stoi(tokens[2])};
     }
 
     if (cmd == "WELCOME" && tokens.size() >= 2 && !tokens[1].empty()) {
         return WelcomeMessage{colorFromChar(tokens[1][0])};
+    }
+
+    if (cmd == "PLAYERS" && tokens.size() >= 3) {
+        return PlayersMessage{tokens[1], tokens[2]};
     }
 
     if (cmd == "STATE") {

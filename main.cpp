@@ -13,6 +13,7 @@
 #include "RemoteGameProxy.hpp"
 #include "UI_OpenCV/OpenCvView.hpp"
 #include "UI_OpenCV/SoundPlayer.hpp"
+#include "UsernamePrompt.hpp"
 #include "IInputHandler.hpp"
 
 using namespace kungfu;
@@ -81,12 +82,18 @@ PlayerPanel& panelFor(Scoreboard& scoreboard, PlayerColor color) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    const auto username = UsernamePrompt::show();
+    if (!username.has_value()) {
+        std::cout << "No username entered - exiting." << std::endl;
+        return 0;
+    }
+
     const std::string host = argc >= 2 ? argv[1] : "127.0.0.1";
     const std::string serverUrl = "ws://" + host + ":7777";
 
-    RemoteGameProxy proxy(serverUrl);
+    RemoteGameProxy proxy(serverUrl, *username);
 
-    std::cout << "Connecting to " << serverUrl << " ..." << std::endl;
+    std::cout << "Connecting to " << serverUrl << " as \"" << *username << "\" ..." << std::endl;
     while (!proxy.hasColor()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
@@ -104,8 +111,8 @@ int main(int argc, char** argv) {
     view.init();
 
     Scoreboard scoreboard;
-    scoreboard.white.name = "white";
-    scoreboard.black.name = "black";
+    scoreboard.white.name = "waiting...";
+    scoreboard.black.name = "waiting...";
 
     SoundPlayer sounds;
     Expiring<std::string> banner;
@@ -132,6 +139,11 @@ int main(int argc, char** argv) {
         // Publishes anything received over the network since the last frame, on this
         // (the main) thread - see RemoteGameProxy.hpp for why that matters.
         proxy.pollEvents();
+
+        if (const auto players = proxy.players(); !players.white.empty()) {
+            scoreboard.white.name = players.white;
+            scoreboard.black.name = players.black;
+        }
 
         BoardHighlight highlight;
         if (const auto selected = clickHandler->localSelection(); selected.has_value()) {

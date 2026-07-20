@@ -13,6 +13,13 @@
 
 namespace kungfu {
 
+// Both players' usernames, once known - empty strings until the PLAYERS broadcast
+// arrives (i.e. until the second player has joined).
+struct KnownPlayers {
+    std::string white;
+    std::string black;
+};
+
 // Client-side stand-in for a local GameEngine - deliberately mirrors its public surface
 // (onMoveStarted/onPieceCaptured/onGameStarted/onGameEnded/getRenderState) so main.cpp's
 // existing subscriber-wiring code barely changes: `game->` becomes `proxy->` and that's
@@ -28,7 +35,9 @@ namespace kungfu {
 // runs on the one thread it always has.
 class RemoteGameProxy {
 public:
-    explicit RemoteGameProxy(const std::string& serverUrl);
+    // Sends `JOIN <username>` the instant the connection opens - see WsClientTransport's
+    // onOpen.
+    RemoteGameProxy(const std::string& serverUrl, const std::string& username);
 
     void sendClick(int row, int col);
 
@@ -37,6 +46,7 @@ public:
     void pollEvents();
 
     std::vector<RenderPiece> getRenderState() const;
+    KnownPlayers players() const;
     bool hasColor() const;
     PlayerColor myColor() const;
 
@@ -48,6 +58,7 @@ public:
 private:
     void handleMessage(const std::string& text);  // runs on the network thread
 
+    std::string username_;
     net::WsClientTransport transport_;
 
     EventBus<MoveStarted> moveBus_;
@@ -61,6 +72,9 @@ private:
 
     mutable std::mutex stateMutex_;
     std::vector<RenderPiece> latestState_;
+
+    mutable std::mutex playersMutex_;
+    KnownPlayers players_;
 
     mutable std::mutex colorMutex_;
     PlayerColor myColor_ = PlayerColor::White;
