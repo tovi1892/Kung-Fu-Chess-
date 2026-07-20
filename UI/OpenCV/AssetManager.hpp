@@ -3,15 +3,16 @@
 #include <string>
 #include <unordered_map>
 
-#include "Core/SpriteSequence.hpp"
+#include "SpriteSequence.hpp"
 #include "model/Enums.hpp"
 
 namespace kungfu {
 
 // Loads and caches every piece's per-state sprite animations from disk.
-// This is the OpenCV/Img-backed half of the animation system - the
-// SpriteSequence/PieceAnimationSet shapes it populates live in Core/ so a
-// future non-OpenCV backend could reuse them with a different loader.
+// SpriteSequence/PieceAnimationSet (also in this OpenCV/ folder) already hold a
+// vector<Img> of decoded frames, so they're just as OpenCV-dependent as this loader -
+// there's no backend-agnostic layer being preserved here, just the natural grouping of
+// "everything that needs OpenCV" in one place.
 class AssetManager {
 public:
     // The full set of per-state animations for one piece type+color, sized

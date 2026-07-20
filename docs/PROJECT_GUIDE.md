@@ -89,11 +89,11 @@ The fastest way to actually understand how the layers connect is to follow one c
 action all the way through. Say you click a white rook, then click a square three cells
 to its right.
 
-1. **OpenCV fires a mouse callback.** `OpenCvView::onMouse` (UI/UI_OpenCV/OpenCvView.cpp:72)
+1. **OpenCV fires a mouse callback.** `OpenCvView::onMouse` (UI/OpenCV/OpenCvView.cpp:72)
    is registered with `cv::setMouseCallback` in `init()`. It filters for left-button-down
    and forwards the raw pixel `(x, y)` to whatever `IInputHandler` was registered.
 2. **`main.cpp`'s `BoardClickHandler::handleClick`** (main.cpp:49) is that handler. It
-   converts the pixel to a board cell via `CoordinateMapper::pixelToCell` (UI/Core/CoordinateMapper.hpp:30),
+   converts the pixel to a board cell via `CoordinateMapper::pixelToCell` (UI/Geometry/CoordinateMapper.hpp:30),
    then calls `Controller::handleCellClick(row, col)`.
 3. **`Controller::handleCellClick`** (Logic/src/input/Controller.cpp:50) is the actual
    selection state machine — the *only* place in the whole codebase that remembers "a
@@ -448,7 +448,7 @@ codebase.
 - **`handleClick(x, y)`** (Controller.cpp:31) — converts a raw pixel to a `(row, col)`
   using the fixed `GameConfig::kCellSizePx` convention, then delegates to
   `handleCellClick`. (Note: this is a *different*, simpler pixel↔cell convention than
-  `UI/Core/CoordinateMapper` uses for the real windowed app — see §4.12 for why two exist.)
+  `UI/Geometry/CoordinateMapper` uses for the real windowed app — see §4.12 for why two exist.)
 - **`handleCellClick(row, col)`** (Controller.cpp:50) — the actual state machine:
   - Click outside the board while something's selected → clear the selection (cancel).
   - No current selection → select the clicked square, but only if it holds a piece that's
@@ -539,7 +539,7 @@ timing itself.
   `GameEngine`), `movesFor(color)`/`scoreFor(color)` (read accessors, used by
   `main.cpp`'s `buildScoreboard` to populate the UI side panels).
 
-### 4.12 `UI/Core/` — `CoordinateMapper`, `SpriteSequence`, `PieceAnimator`
+### 4.12 `UI/Geometry/` — `CoordinateMapper`
 
 **`CoordinateMapper.hpp`** — converts between pixels (in the real, windowed app) and
 board cells, accounting for a margin (space for the a-h/1-8 labels) and an
@@ -553,19 +553,9 @@ assume, so they can't share one implementation. `main.cpp` deliberately gets its
 from `OpenCvView::mapper()` (a read-only accessor) rather than constructing a second one
 itself, specifically so drawing and click-handling can never drift out of sync.
 
-**`SpriteSequence.hpp`/`.cpp`** — `struct SpriteSequence` (an ordered `vector<Img>` of
-frames + `framesPerSec` + `isLoop`, taken straight from one `config.json`) and
-`struct PieceAnimationSet` (all five states' sequences for one piece type+color:
-`idle`/`move`/`jump`/`longRest`/`shortRest`), with `forState(PieceState)` mapping the
-gameplay state to the right sequence (`Moving→move`, `Airborne→jump`, `Cooldown→longRest`,
-`ShortRest→shortRest`, everything else→`idle`).
-
-**`PieceAnimator.hpp`/`.cpp`** — tracks, per piece id, how long it's been in its current
-state using a **real wall-clock** (`std::chrono::steady_clock`), completely independent of
-the engine's simulated game time — animation frame rate is a real display rate, not tied
-to game speed. `frameIndexFor(pieceId, state, sequence)`: if the piece's state changed
-since last call, resets its clock; otherwise computes `elapsed × framesPerSec`, wrapping
-(modulo) if the sequence loops, or clamping to the last frame if it doesn't.
+This is the one folder under `UI/` with zero OpenCV (or Win32) dependency — pure
+pixel↔cell arithmetic, which is exactly why it's split out on its own rather than sitting
+alongside the OpenCV-dependent files in §4.14.
 
 ### 4.13 `UI/Img/` — `Img`
 
@@ -584,12 +574,31 @@ draws through this). Notable methods:
   (manual per-channel `src·α + dst·(1-α)` math) regardless of the target's channel count,
   so a transparent sprite never gets flattened into an opaque box; otherwise a plain copy.
 - `draw_rect`/`draw_rect_outline`/`draw_arc`/`put_text`/`text_width` — the other drawing
-  primitives everything in `UI_OpenCV/` uses instead of touching `cv::` directly.
+  primitives everything in `OpenCV/` uses instead of touching `cv::` directly.
 - `clone()` — a genuine deep copy. This matters because `cv::Mat` copies are shallow by
   default; `OpenCvView` clones its cached static background every frame before drawing on
   it, or every frame's pieces would permanently smear onto every later frame.
 
-### 4.14 `UI/UI_OpenCV/` — the concrete renderer
+### 4.14 `UI/OpenCV/` — the concrete renderer
+
+Everything here genuinely depends on OpenCV (directly, or via `Img`) — unlike
+`Geometry/`, this folder makes no claim of being backend-agnostic.
+
+**`SpriteSequence.hpp`/`.cpp`** — `struct SpriteSequence` (an ordered `vector<Img>` of
+frames + `framesPerSec` + `isLoop`, taken straight from one `config.json`) and
+`struct PieceAnimationSet` (all five states' sequences for one piece type+color:
+`idle`/`move`/`jump`/`longRest`/`shortRest`), with `forState(PieceState)` mapping the
+gameplay state to the right sequence (`Moving→move`, `Airborne→jump`, `Cooldown→longRest`,
+`ShortRest→shortRest`, everything else→`idle`). Lives here rather than in `Geometry/`
+because `SpriteSequence::frames` is a `vector<Img>` — it's exactly as OpenCV-dependent as
+`AssetManager` below, so a folder split that claimed otherwise wouldn't have been accurate.
+
+**`PieceAnimator.hpp`/`.cpp`** — tracks, per piece id, how long it's been in its current
+state using a **real wall-clock** (`std::chrono::steady_clock`), completely independent of
+the engine's simulated game time — animation frame rate is a real display rate, not tied
+to game speed. `frameIndexFor(pieceId, state, sequence)`: if the piece's state changed
+since last call, resets its clock; otherwise computes `elapsed × framesPerSec`, wrapping
+(modulo) if the sequence loops, or clamping to the last frame if it doesn't.
 
 **`AssetManager.hpp`/`.cpp`** — loads and caches every piece's five animation states from
 disk. `folderName(type, color)` maps to the asset directory naming convention
@@ -729,7 +738,7 @@ completely different game, and it keeps `OpenCvView` itself down to orchestratio
 6. `Logic/include/input/Controller.hpp`/`.cpp` — short, and ties everything above back to
    "a click."
 7. `main.cpp` — see it all wired together end to end.
-8. `UI/UI_OpenCV/OpenCvView.cpp` + `BoardRenderer.cpp` — how a `RenderPiece` list actually
+8. `UI/OpenCV/OpenCvView.cpp` + `BoardRenderer.cpp` — how a `RenderPiece` list actually
    becomes pixels.
 
 Section 3 of this document (the traced click) is the fastest way to re-orient yourself

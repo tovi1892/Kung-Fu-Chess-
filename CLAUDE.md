@@ -115,15 +115,25 @@ The project is split into three layers with a strict dependency direction: `UI` 
     functions. `GameEngine` owns one instance: `requestMove` records a move's notation the moment it's accepted, and
     `wait` drains `RealTimeArbiter::CaptureEvent`s (pushed wherever a genuine capture happens - static, dynamic,
     knight-landing, or airborne counter-kill) to update score. Exposed read-only via `GameEngine::gameRecord()`.
-- **`UI/`** — the only OpenCV-dependent code. `UI_OpenCV/OpenCvView` implements `IGameView` using `Img` (a small
-  `cv::Mat` wrapper in `UI/Img/`), `AssetManager` (loads/caches each piece's per-state sprite sequences from
-  `UI/assets/pieces_classic/<Kind><Color>/states/<idle|move|jump|long_rest|short_rest>/`), and `CoordinateMapper`
-  (pixel↔cell conversion for the actual windowed app, now with an `offsetX`/`offsetY` so the board can sit to the
-  right of a side panel — distinct from `Controller`'s fixed-`CELL_SIZE` mapping, since the real window can be a
-  different size than the `CELL_SIZE=100` convention the DSL/tests assume). The window is drawn entirely from code
-  (checkerboard, a-h/1-8 labels, and both name/score/move-list side panels) - no background image file is involved.
-  `main.cpp` gets its `CoordinateMapper` from `OpenCvView::mapper()` rather than constructing a second one, so the
-  board's on-screen position (and its side-panel offset) can't drift out of sync between drawing and click handling.
+- **`UI/`** — organized by actual dependency, not lumped together as "the UI":
+  - `Geometry/` — `CoordinateMapper` (pixel↔cell conversion for the actual windowed app, with an `offsetX`/`offsetY`
+    so the board can sit to the right of a side panel — distinct from `Controller`'s fixed-`CELL_SIZE` mapping,
+    since the real window can be a different size than the `CELL_SIZE=100` convention the DSL/tests assume).
+    `main.cpp` gets its `CoordinateMapper` from `OpenCvView::mapper()` rather than constructing a second one, so the
+    board's on-screen position can't drift out of sync between drawing and click handling. The one folder under
+    `UI/` with zero OpenCV/Win32 dependency — pure pixel↔cell arithmetic.
+  - `Img/` — the `Img` wrapper (small `cv::Mat` wrapper) — the one class in the project allowed to call OpenCV
+    pixel-drawing functions directly.
+  - `OpenCV/` — everything that actually needs OpenCV: `OpenCvView` (the only `IGameView` implementation — the
+    window is drawn entirely from code, no background image file involved), `BoardRenderer`/`ScoreboardRenderer`
+    (drawing), `RenderConfig` (visual/geometric tuning constants), and `AssetManager`/`SpriteSequence`/
+    `PieceAnimator` (sprite loading + animation — `SpriteSequence` holds a `vector<Img>`, so it's exactly as
+    OpenCV-dependent as the rest, hence living here). `AssetManager` loads/caches each piece's per-state sprite
+    sequences from `UI/assets/pieces_classic/<Kind><Color>/states/<idle|move|jump|long_rest|short_rest>/`.
+  - `Windows/` — `SoundPlayer`/`UsernamePrompt`, raw Win32 API wrappers (`PlaySoundW`/`CreateWindowExA`) with zero
+    OpenCV dependency — the folder name itself flags that this won't compile on a non-Windows target without changes.
+  - `NetClient/` — `RemoteGameProxy`, the client-side, WebSocket-backed stand-in for a local `GameEngine` (talks to
+    `kungfu_server` — see `Server/` and `Network/`, which sit alongside `Logic/`/`UI/` at the repo root).
 
 ### Non-obvious invariants
 

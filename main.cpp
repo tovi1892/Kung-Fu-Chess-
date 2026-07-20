@@ -9,11 +9,11 @@
 #include "model/Enums.hpp"
 #include "model/Position.hpp"
 
-#include "Core/CoordinateMapper.hpp"
-#include "RemoteGameProxy.hpp"
-#include "UI_OpenCV/OpenCvView.hpp"
-#include "UI_OpenCV/SoundPlayer.hpp"
-#include "UsernamePrompt.hpp"
+#include "Geometry/CoordinateMapper.hpp"
+#include "NetClient/RemoteGameProxy.hpp"
+#include "OpenCV/OpenCvView.hpp"
+#include "Windows/SoundPlayer.hpp"
+#include "Windows/UsernamePrompt.hpp"
 #include "IInputHandler.hpp"
 
 using namespace kungfu;

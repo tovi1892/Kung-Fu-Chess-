@@ -5,7 +5,7 @@
 
 #include <windows.h>
 
-#include "UI_OpenCV/RenderConfig.hpp"
+#include "OpenCV/RenderConfig.hpp"
 
 namespace kungfu {
 

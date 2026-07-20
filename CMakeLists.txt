@@ -63,9 +63,9 @@ target_include_directories(kungfu_network PUBLIC
 target_link_libraries(kungfu_network PUBLIC kungfu_logic ixwebsocket ws2_32)
 
 # --- kungfu_ui: the OpenCV-backed view, depends on kungfu_logic + kungfu_network ----
-# (kungfu_network is needed here too because UI/RemoteGameProxy.cpp - the client-side
-# WebSocket-backed stand-in for a local GameEngine - lives under UI/ alongside the
-# renderer, and includes Network/WsClientTransport.hpp.)
+# (kungfu_network is needed here too because UI/NetClient/RemoteGameProxy.cpp - the
+# client-side WebSocket-backed stand-in for a local GameEngine - lives under UI/ as
+# well, and includes Network/WsClientTransport.hpp.)
 file(GLOB_RECURSE UI_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/UI/*.cpp")
 add_library(kungfu_ui STATIC ${UI_SOURCES})
 target_include_directories(kungfu_ui PUBLIC
@@ -80,7 +80,7 @@ else()
     target_link_libraries(kungfu_ui PUBLIC ${OpenCV_LIBS})
 endif()
 
-# SoundPlayer (UI/UI_OpenCV/SoundPlayer.cpp) uses PlaySoundW from winmm - a native
+# SoundPlayer (UI/Windows/SoundPlayer.cpp) uses PlaySoundW from winmm - a native
 # Windows API, not a new third-party dependency.
 target_link_libraries(kungfu_ui PUBLIC winmm)
 
