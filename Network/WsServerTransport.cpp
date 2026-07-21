@@ -1,6 +1,7 @@
 #include "WsServerTransport.hpp"
 
 #include <stdexcept>
+#include <vector>
 
 #include <ixwebsocket/IXNetSystem.h>
 #include <ixwebsocket/IXWebSocket.h>
@@ -70,28 +71,56 @@ void WsServerTransport::stop() {
     }
 }
 
+// send/broadcast/close never call into ix::WebSocket while holding clientsMutex_: a
+// write to a connection whose peer already closed can make IXWebSocket synchronously
+// invoke this same transport's onClientMessageCallback (Close) on the calling thread
+// before send()/close() returns - which would then try to re-lock clientsMutex_ on a
+// thread that already holds it. Copying out the raw pointer(s) first and only calling
+// send()/close() after releasing the lock avoids that self-deadlock. The pointers stay
+// valid regardless: they reference the ix::WebSocket each connection's own dedicated
+// thread is still running inside (see WsServerTransport::start()'s Open handler) until
+// that thread's run() returns, which can't happen concurrently with this call.
 void WsServerTransport::send(const ConnectionId& id, const std::string& text) {
-    std::lock_guard<std::mutex> lock(clientsMutex_);
-    auto it = clients_.find(id);
-    if (it != clients_.end() && it->second) {
-        it->second->send(text);
+    ix::WebSocket* ws = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        auto it = clients_.find(id);
+        if (it != clients_.end()) {
+            ws = it->second;
+        }
+    }
+    if (ws) {
+        ws->send(text);
     }
 }
 
 void WsServerTransport::broadcast(const std::string& text) {
-    std::lock_guard<std::mutex> lock(clientsMutex_);
-    for (auto& [id, ws] : clients_) {
-        if (ws) {
-            ws->send(text);
+    std::vector<ix::WebSocket*> targets;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        targets.reserve(clients_.size());
+        for (auto& [id, ws] : clients_) {
+            if (ws) {
+                targets.push_back(ws);
+            }
         }
+    }
+    for (auto* ws : targets) {
+        ws->send(text);
     }
 }
 
 void WsServerTransport::close(const ConnectionId& id) {
-    std::lock_guard<std::mutex> lock(clientsMutex_);
-    auto it = clients_.find(id);
-    if (it != clients_.end() && it->second) {
-        it->second->close();
+    ix::WebSocket* ws = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        auto it = clients_.find(id);
+        if (it != clients_.end()) {
+            ws = it->second;
+        }
+    }
+    if (ws) {
+        ws->close();
     }
 }
 

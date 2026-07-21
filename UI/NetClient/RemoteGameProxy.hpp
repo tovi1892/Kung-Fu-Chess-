@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -9,6 +10,7 @@
 #include "events/EventBus.hpp"
 #include "events/GameEvents.hpp"
 
+#include "Network/Protocol.hpp"
 #include "Network/WsClientTransport.hpp"
 
 namespace kungfu {
@@ -35,9 +37,10 @@ struct KnownPlayers {
 // runs on the one thread it always has.
 class RemoteGameProxy {
 public:
-    // Sends `JOIN <username>` the instant the connection opens - see WsClientTransport's
-    // onOpen.
-    RemoteGameProxy(const std::string& serverUrl, const std::string& username);
+    // Sends `JOIN <mode> <username> [room]` the instant the connection opens - see
+    // WsClientTransport's onOpen. `room` is only meaningful when mode == JoinRoom.
+    RemoteGameProxy(const std::string& serverUrl, const std::string& username, net::JoinMode mode,
+                     const std::string& room);
 
     void sendClick(int row, int col);
 
@@ -47,8 +50,17 @@ public:
 
     std::vector<RenderPiece> getRenderState() const;
     KnownPlayers players() const;
-    bool hasColor() const;
-    PlayerColor myColor() const;
+
+    // True once the server has told this connection its role - either a color (a
+    // player) or that it's spectating. main.cpp's connect-wait loop blocks on this
+    // rather than hasColor() alone, since a spectator never receives a color.
+    bool hasRole() const;
+    bool isSpectator() const;
+    PlayerColor myColor() const;  // only meaningful when !isSpectator()
+
+    // The current match's room id, once known - std::nullopt for a quick match (which
+    // has no user-facing id) or until the ROOM message arrives for a named room.
+    std::optional<std::string> roomKey() const;
 
     EventBus<MoveStarted>& onMoveStarted() { return moveBus_; }
     EventBus<PieceCaptured>& onPieceCaptured() { return captureBus_; }
@@ -76,9 +88,13 @@ private:
     mutable std::mutex playersMutex_;
     KnownPlayers players_;
 
-    mutable std::mutex colorMutex_;
+    // Groups every "who/where am I" fact this connection learns from the server, all set
+    // only from handleMessage (network thread) and read only from the main thread.
+    mutable std::mutex sessionMutex_;
     PlayerColor myColor_ = PlayerColor::White;
     bool hasColor_ = false;
+    bool isSpectator_ = false;
+    std::optional<std::string> roomKey_;
 };
 
 }  // namespace kungfu

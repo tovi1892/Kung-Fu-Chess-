@@ -81,4 +81,15 @@ void drawPlayerPanel(Img& frame, const PlayerPanel& panel, int panelX, int panel
     }
 }
 
+void drawRoomLabel(Img& frame, const std::string& roomLabel, int windowWidth) {
+    if (roomLabel.empty()) {
+        return;
+    }
+    static const cv::Scalar kRoomLabelColor(190, 190, 190);
+    const int textWidth = frame.text_width(roomLabel, RenderConfig::kRoomLabelFontSize, RenderConfig::kRoomLabelTextThickness);
+    const int x = std::max(0, (windowWidth - textWidth) / 2);
+    frame.put_text(roomLabel, x, RenderConfig::kRoomLabelYPx, RenderConfig::kRoomLabelFontSize, kRoomLabelColor,
+                    RenderConfig::kRoomLabelTextThickness);
+}
+
 }  // namespace kungfu

@@ -21,9 +21,6 @@ struct PieceAnimationSet {
     SpriteSequence move;
     SpriteSequence jump;
     SpriteSequence longRest;
-    // Played while a piece is in PieceState::ShortRest - the brief rest a
-    // piece takes right after landing from a jump, shorter than the
-    // post-move longRest above.
     SpriteSequence shortRest;
 
     const SpriteSequence& forState(PieceState state) const;

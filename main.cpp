@@ -55,6 +55,10 @@ public:
     BoardClickHandler(RemoteGameProxy& proxy, CoordinateMapper mapper) : proxy_(proxy), mapper_(mapper) {}
 
     void handleClick(int x, int y) override {
+        if (proxy_.isSpectator()) {
+            return;  // read-only - nothing to select, nothing to send
+        }
+
         const Position cell = mapper_.pixelToCell(x, y);
         proxy_.sendClick(cell.row(), cell.col());
 
@@ -79,11 +83,21 @@ PlayerPanel& panelFor(Scoreboard& scoreboard, PlayerColor color) {
     return color == PlayerColor::White ? scoreboard.white : scoreboard.black;
 }
 
+// UsernamePrompt stays Network-agnostic (see UI/Windows/UsernamePrompt.hpp), so this is
+// the one place that maps its UI-facing outcome onto the wire protocol's JoinMode.
+net::JoinMode toJoinMode(JoinInfo::Mode mode) {
+    switch (mode) {
+        case JoinInfo::Mode::CreateRoom: return net::JoinMode::CreateRoom;
+        case JoinInfo::Mode::JoinRoom:   return net::JoinMode::JoinRoom;
+        default:                        return net::JoinMode::QuickMatch;
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-    const auto username = UsernamePrompt::show();
-    if (!username.has_value()) {
+    const auto join = UsernamePrompt::show();
+    if (!join.has_value()) {
         std::cout << "No username entered - exiting." << std::endl;
         return 0;
     }
@@ -91,13 +105,17 @@ int main(int argc, char** argv) {
     const std::string host = argc >= 2 ? argv[1] : "127.0.0.1";
     const std::string serverUrl = "ws://" + host + ":7777";
 
-    RemoteGameProxy proxy(serverUrl, *username);
+    RemoteGameProxy proxy(serverUrl, join->username, toJoinMode(join->mode), join->room);
 
-    std::cout << "Connecting to " << serverUrl << " as \"" << *username << "\" ..." << std::endl;
-    while (!proxy.hasColor()) {
+    std::cout << "Connecting to " << serverUrl << " as \"" << join->username << "\" ..." << std::endl;
+    while (!proxy.hasRole()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    std::cout << "Connected as " << (proxy.myColor() == PlayerColor::White ? "White" : "Black") << std::endl;
+    if (proxy.isSpectator()) {
+        std::cout << "Connected as a spectator" << std::endl;
+    } else {
+        std::cout << "Connected as " << (proxy.myColor() == PlayerColor::White ? "White" : "Black") << std::endl;
+    }
 
     const int windowSize = 800;
     const int sidePanelWidth = 260;
@@ -143,6 +161,9 @@ int main(int argc, char** argv) {
         if (const auto players = proxy.players(); !players.white.empty()) {
             scoreboard.white.name = players.white;
             scoreboard.black.name = players.black;
+        }
+        if (const auto key = proxy.roomKey(); key.has_value()) {
+            scoreboard.roomLabel = "Room: " + *key;
         }
 
         BoardHighlight highlight;

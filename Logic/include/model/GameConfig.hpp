@@ -14,7 +14,7 @@ struct GameConfig {
     // the base unit RealTimeArbiter builds all of its move timing from.
     // (~700ms at 1x speed.)
     static constexpr int kCellSizePx = 80;
-    static constexpr int kPieceSpeedPxPerSec = 10000;
+    static constexpr int kPieceSpeedPxPerSec = 150;
     static constexpr int kMsPerCell = 1000 * kCellSizePx / kPieceSpeedPxPerSec;
 
     // How long a piece stays on cooldown after arriving from a move, before

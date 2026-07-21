@@ -66,6 +66,9 @@ struct PlayerPanel {
 struct Scoreboard {
     PlayerPanel white;
     PlayerPanel black;
+    // The current match's room id, for display - empty means "don't show anything"
+    // (quick-match games have no user-facing room id).
+    std::string roomLabel;
 };
 
 // A transient game-lifecycle message (start/end) a view should display centered over

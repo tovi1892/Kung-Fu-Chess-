@@ -4,10 +4,11 @@
 
 namespace kungfu {
 
-RemoteGameProxy::RemoteGameProxy(const std::string& serverUrl, const std::string& username)
+RemoteGameProxy::RemoteGameProxy(const std::string& serverUrl, const std::string& username, net::JoinMode mode,
+                                  const std::string& room)
     : username_(username), transport_(serverUrl) {
     transport_.onMessage([this](const std::string& text) { handleMessage(text); });
-    transport_.onOpen([this]() { transport_.send(net::encodeJoin(username_)); });
+    transport_.onOpen([this, mode, room]() { transport_.send(net::encodeJoin(username_, mode, room)); });
     transport_.start();
 }
 
@@ -19,9 +20,15 @@ void RemoteGameProxy::handleMessage(const std::string& text) {
     const auto decoded = net::decode(text);
 
     if (const auto* welcome = std::get_if<net::WelcomeMessage>(&decoded)) {
-        std::lock_guard<std::mutex> lock(colorMutex_);
+        std::lock_guard<std::mutex> lock(sessionMutex_);
         myColor_ = welcome->color;
         hasColor_ = true;
+    } else if (std::get_if<net::SpectateMessage>(&decoded)) {
+        std::lock_guard<std::mutex> lock(sessionMutex_);
+        isSpectator_ = true;
+    } else if (const auto* room = std::get_if<net::RoomMessage>(&decoded)) {
+        std::lock_guard<std::mutex> lock(sessionMutex_);
+        roomKey_ = room->key;
     } else if (const auto* players = std::get_if<net::PlayersMessage>(&decoded)) {
         std::lock_guard<std::mutex> lock(playersMutex_);
         players_ = KnownPlayers{players->white, players->black};
@@ -78,14 +85,24 @@ KnownPlayers RemoteGameProxy::players() const {
     return players_;
 }
 
-bool RemoteGameProxy::hasColor() const {
-    std::lock_guard<std::mutex> lock(colorMutex_);
-    return hasColor_;
+bool RemoteGameProxy::hasRole() const {
+    std::lock_guard<std::mutex> lock(sessionMutex_);
+    return hasColor_ || isSpectator_;
+}
+
+bool RemoteGameProxy::isSpectator() const {
+    std::lock_guard<std::mutex> lock(sessionMutex_);
+    return isSpectator_;
 }
 
 PlayerColor RemoteGameProxy::myColor() const {
-    std::lock_guard<std::mutex> lock(colorMutex_);
+    std::lock_guard<std::mutex> lock(sessionMutex_);
     return myColor_;
+}
+
+std::optional<std::string> RemoteGameProxy::roomKey() const {
+    std::lock_guard<std::mutex> lock(sessionMutex_);
+    return roomKey_;
 }
 
 }  // namespace kungfu

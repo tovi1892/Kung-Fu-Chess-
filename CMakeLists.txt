@@ -85,8 +85,9 @@ endif()
 target_link_libraries(kungfu_ui PUBLIC winmm)
 
 # --- Executables -------------------------------------------------------------
-# Server: owns the real GameEngine, no OpenCV involved at all.
-add_executable(kungfu_server Server/main.cpp)
+# Server: owns the real GameEngine (one per room), no OpenCV involved at all.
+file(GLOB_RECURSE SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/*.cpp")
+add_executable(kungfu_server ${SERVER_SOURCES})
 target_link_libraries(kungfu_server PRIVATE kungfu_logic kungfu_network)
 
 # Client: owns the OpenCV window, talks to the server instead of owning GameEngine.

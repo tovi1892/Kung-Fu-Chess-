@@ -51,8 +51,24 @@ std::vector<std::string> splitLines(const std::string& text) {
 
 }  // namespace
 
-std::string encodeJoin(const std::string& username) {
-    return "JOIN " + username;
+namespace {
+
+char joinModeChar(JoinMode mode) {
+    switch (mode) {
+        case JoinMode::CreateRoom: return 'C';
+        case JoinMode::JoinRoom:   return 'R';
+        default:                  return 'Q';
+    }
+}
+
+}  // namespace
+
+std::string encodeJoin(const std::string& username, JoinMode mode, const std::string& room) {
+    std::string out = std::string("JOIN ") + joinModeChar(mode) + " " + username;
+    if (mode == JoinMode::JoinRoom) {
+        out += " " + room;
+    }
+    return out;
 }
 
 std::string encodeClick(int row, int col) {
@@ -61,6 +77,14 @@ std::string encodeClick(int row, int col) {
 
 std::string encodeWelcome(PlayerColor color) {
     return std::string("WELCOME ") + colorChar(color);
+}
+
+std::string encodeSpectate() {
+    return "SPECTATE";
+}
+
+std::string encodeRoom(const std::string& key) {
+    return "ROOM " + key;
 }
 
 std::string encodePlayers(const std::string& white, const std::string& black) {
@@ -115,8 +139,16 @@ DecodedMessage decode(const std::string& text) {
     }
     const std::string& cmd = tokens[0];
 
-    if (cmd == "JOIN" && tokens.size() >= 2) {
-        return JoinMessage{tokens[1]};
+    if (cmd == "JOIN" && tokens.size() >= 3 && !tokens[1].empty()) {
+        const char modeChar = tokens[1][0];
+        if (modeChar == 'R') {
+            if (tokens.size() < 4) {
+                return std::monostate{};
+            }
+            return JoinMessage{tokens[2], JoinMode::JoinRoom, tokens[3]};
+        }
+        const JoinMode mode = modeChar == 'C' ? JoinMode::CreateRoom : JoinMode::QuickMatch;
+        return JoinMessage{tokens[2], mode, ""};
     }
 
     if (cmd == "CLICK" && tokens.size() >= 3) {
@@ -125,6 +157,14 @@ DecodedMessage decode(const std::string& text) {
 
     if (cmd == "WELCOME" && tokens.size() >= 2 && !tokens[1].empty()) {
         return WelcomeMessage{colorFromChar(tokens[1][0])};
+    }
+
+    if (cmd == "SPECTATE") {
+        return SpectateMessage{};
+    }
+
+    if (cmd == "ROOM" && tokens.size() >= 2) {
+        return RoomMessage{tokens[1]};
     }
 
     if (cmd == "PLAYERS" && tokens.size() >= 3) {

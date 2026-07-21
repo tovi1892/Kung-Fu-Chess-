@@ -13,10 +13,11 @@ constexpr int kEscapeKeyCode = 27;
 
 OpenCvView::OpenCvView(int boardSize, int sidePanelWidth)
     : boardSize_(boardSize), sidePanelWidth_(sidePanelWidth),
-      width_(sidePanelWidth_ * 2 + boardSize_), height_(boardSize_),
+      width_(sidePanelWidth_ * 2 + boardSize_),
+      height_(boardSize_ + RenderConfig::kTopStripHeightPx),
       windowName_("KungFuChess"),
       mapper_(boardSize_, boardSize_, GameConfig::kBoardSize, GameConfig::kBoardSize,
-              CoordinateMapper::kDefaultMargin, sidePanelWidth_, 0) {}
+              CoordinateMapper::kDefaultMargin, sidePanelWidth_, RenderConfig::kTopStripHeightPx) {}
 
 void OpenCvView::init() {
     drawStaticBackground();
@@ -41,6 +42,7 @@ void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighl
                          const Scoreboard& scoreboard, const Banner& banner) {
     Img frame = boardImg_.clone();
 
+    drawRoomLabel(frame, scoreboard.roomLabel, width_);
     drawPlayerPanel(frame, scoreboard.black, 0, sidePanelWidth_, height_);
     drawPlayerPanel(frame, scoreboard.white, sidePanelWidth_ + boardSize_, sidePanelWidth_, height_);
 

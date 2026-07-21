@@ -5,16 +5,29 @@
 
 namespace kungfu {
 
-// A small native window: a text field for a username and a Play button. The one place
-// allowed to touch the Win32 windowing API directly (mirrors Img for OpenCV, SoundPlayer
-// for winmm) - OpenCV alone has no way to take keyboard text input, so this uses the
-// OS's own windowing instead of building one keystroke at a time out of put_text.
+// What the player chose: quick-match a stranger (Play), create a fresh room (Room ->
+// Create), or join a specific room by id (Room -> Join). Deliberately Network-agnostic -
+// main.cpp maps this to net::JoinMode when constructing RemoteGameProxy, so this header
+// (like the rest of UI/Windows/) stays free of any Network/ dependency.
+struct JoinInfo {
+    enum class Mode { QuickMatch, CreateRoom, JoinRoom };
+    std::string username;
+    Mode mode = Mode::QuickMatch;
+    std::string room;  // meaningful only when mode == JoinRoom
+};
+
+// A small native window: a text field for a username, a Play button (quick match), and a
+// Room button (opens a second popup to create or join a specific room by id). The one
+// place allowed to touch the Win32 windowing API directly (mirrors Img for OpenCV,
+// SoundPlayer for winmm) - OpenCV alone has no way to take keyboard text input, so this
+// uses the OS's own windowing instead of building one keystroke at a time out of put_text.
 class UsernamePrompt {
 public:
-    // Blocks until the user clicks Play (returns the entered username - trimmed of
-    // whitespace and capped to a sane length, since it becomes one token in the wire
-    // protocol) or closes the window instead (returns std::nullopt).
-    static std::optional<std::string> show();
+    // Blocks until the user resolves the prompt via Play or Room->Create/Join (returns
+    // the chosen JoinInfo - the username and any room id are trimmed of whitespace and
+    // capped to a sane length, since they become wire-protocol tokens), or closes the
+    // window / cancels out entirely (returns std::nullopt).
+    static std::optional<JoinInfo> show();
 };
 
 }  // namespace kungfu

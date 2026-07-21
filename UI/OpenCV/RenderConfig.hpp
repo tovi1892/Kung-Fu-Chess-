@@ -7,6 +7,15 @@ namespace kungfu {
 // to the function that draws with them (see BoardRenderer.cpp/ScoreboardRenderer.cpp) -
 // this file is only for the numbers, not the colors.
 struct RenderConfig {
+    // --- Top strip (room-id label area, reserved above the board and both side panels) ---
+    // Real added height, fed into both OpenCvView's own height_ and mapper_'s offsetY -
+    // not just a text position - so the board, its labels, and both panels all shift
+    // down to make room for it. See Scoreboard::roomLabel / OpenCvView's constructor.
+    static constexpr int kTopStripHeightPx = 32;
+    static constexpr int kRoomLabelYPx = 22;
+    static constexpr double kRoomLabelFontSize = 0.5;
+    static constexpr int kRoomLabelTextThickness = 1;
+
     // --- Board coordinate labels (a-h / 1-8) ---
     static constexpr double kLabelFontSize = 0.5;
     static constexpr int kLabelTextThickness = 1;
@@ -37,17 +46,19 @@ struct RenderConfig {
     static constexpr int kBannerTextBaselineOffsetPx = 10;
 
     // --- Scoreboard side panel ---
+    // Name/score/header Y-anchors are pushed down by kTopStripHeightPx so their content
+    // starts below the room-id label strip instead of colliding with it.
     static constexpr double kPanelNameFontSize = 0.65;
     static constexpr int kPanelNameTextThickness = 2;
-    static constexpr int kPanelNameYPx = 34;
+    static constexpr int kPanelNameYPx = 34 + kTopStripHeightPx;
 
     static constexpr double kPanelScoreFontSize = 0.45;
     static constexpr int kPanelScoreTextThickness = 1;
-    static constexpr int kPanelScoreYPx = 60;
+    static constexpr int kPanelScoreYPx = 60 + kTopStripHeightPx;
 
     static constexpr double kPanelHeaderFontSize = 0.42;
     static constexpr int kPanelHeaderTextThickness = 1;
-    static constexpr int kPanelHeaderYPx = 95;
+    static constexpr int kPanelHeaderYPx = 95 + kTopStripHeightPx;
 
     static constexpr int kPanelTimeColumnOffsetPx = 18;
     static constexpr int kPanelMoveColumnOffsetPx = 10;
@@ -75,10 +86,31 @@ struct RenderConfig {
     static constexpr int kUsernamePromptEditY = 45;
     static constexpr int kUsernamePromptEditWidth = 260;
     static constexpr int kUsernamePromptEditHeight = 24;
-    static constexpr int kUsernamePromptButtonX = 100;
+    // Play and Room sit side by side on the same row.
     static constexpr int kUsernamePromptButtonY = 90;
-    static constexpr int kUsernamePromptButtonWidth = 100;
+    static constexpr int kUsernamePromptButtonWidth = 90;
     static constexpr int kUsernamePromptButtonHeight = 30;
+    static constexpr int kUsernamePromptPlayButtonX = 70;
+    static constexpr int kUsernamePromptRoomButtonX = 180;
+
+    // --- Room popup window layout (opened by the username prompt's Room button) ---
+    static constexpr int kRoomPromptWindowWidth = 320;
+    static constexpr int kRoomPromptWindowHeight = 160;
+    static constexpr int kRoomPromptLabelX = 20;
+    static constexpr int kRoomPromptLabelY = 20;
+    static constexpr int kRoomPromptLabelWidth = 260;
+    static constexpr int kRoomPromptLabelHeight = 20;
+    static constexpr int kRoomPromptEditX = 20;
+    static constexpr int kRoomPromptEditY = 45;
+    static constexpr int kRoomPromptEditWidth = 260;
+    static constexpr int kRoomPromptEditHeight = 24;
+    // Create, Join, and Cancel sit side by side on the same row.
+    static constexpr int kRoomPromptButtonY = 90;
+    static constexpr int kRoomPromptButtonWidth = 80;
+    static constexpr int kRoomPromptButtonHeight = 30;
+    static constexpr int kRoomPromptCreateButtonX = 30;
+    static constexpr int kRoomPromptJoinButtonX = 120;
+    static constexpr int kRoomPromptCancelButtonX = 210;
 
     // --- OpenCvView window ---
     static constexpr int kDefaultWindowBoardSizePx = 800;

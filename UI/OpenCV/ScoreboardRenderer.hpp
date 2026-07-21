@@ -14,4 +14,9 @@ namespace kungfu {
 // of the list silently overflowing off-screen.
 void drawPlayerPanel(Img& frame, const PlayerPanel& panel, int panelX, int panelWidth, int panelHeight);
 
+// Draws the current match's room id, centered across the full window width in the top
+// strip reserved for it (see RenderConfig::kTopStripHeightPx) - a no-op when `roomLabel`
+// is empty (quick-match games have no user-facing room id to show).
+void drawRoomLabel(Img& frame, const std::string& roomLabel, int windowWidth);
+
 }  // namespace kungfu
