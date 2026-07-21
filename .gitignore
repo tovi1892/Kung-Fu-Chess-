@@ -58,6 +58,9 @@ compile_commands.json
 *.bak
 *.swp
 
+# Runtime-generated account database (Server/AccountStore) - created fresh on first run
+*.db
+
 # vcpkg
 vcpkg_installed/
 

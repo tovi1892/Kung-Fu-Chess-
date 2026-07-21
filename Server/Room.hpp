@@ -1,6 +1,8 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -23,6 +25,16 @@ struct PlayerSession {
     std::shared_ptr<Controller> controller;
 };
 
+// A player's disconnect mid-game starts this instead of immediately dropping their seat -
+// a pure grace period before an automatic forfeit, not a reconnection mechanic (see the
+// Phase 4 plan's explicit non-goals). disconnectedColor's PlayerSession is deliberately
+// kept in Room::players until the forfeit actually resolves, since its username is still
+// needed for the eventual Elo update.
+struct PendingForfeit {
+    PlayerColor disconnectedColor;
+    std::chrono::steady_clock::time_point deadline;
+};
+
 // One match: its own board/rules/engine, up to two players, and any number of read-only
 // spectators. Connection ids are plain strings (matching
 // WsServerTransport::ConnectionId) rather than including Network/ here - this file stays
@@ -34,6 +46,7 @@ struct Room {
     std::shared_ptr<GameEngine> game;
     std::unordered_map<std::string, PlayerSession> players;  // connection id -> session, max 2
     std::unordered_set<std::string> spectators;               // connection id, read-only
+    std::optional<PendingForfeit> pendingForfeit;
 };
 
 // Builds a fresh Room with a new starting board/RuleEngine/GameEngine - no players yet.

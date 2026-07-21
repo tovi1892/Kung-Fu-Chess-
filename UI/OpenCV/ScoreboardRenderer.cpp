@@ -42,7 +42,13 @@ void drawPlayerPanel(Img& frame, const PlayerPanel& panel, int panelX, int panel
         return panelX + std::max(0, (panelWidth - textWidth) / 2);
     };
 
-    const std::string name = panel.name.empty() ? std::string("Player") : panel.name;
+    // Rating is folded into the same name line ("alice (1215)") rather than its own row -
+    // 0 means "not yet known" (pre-login, or the opponent's rating before a match this
+    // client is part of has concluded), so it's simply omitted until then.
+    std::string name = panel.name.empty() ? std::string("Player") : panel.name;
+    if (panel.rating > 0) {
+        name += " (" + std::to_string(panel.rating) + ")";
+    }
     frame.put_text(name, centeredX(name, RenderConfig::kPanelNameFontSize, RenderConfig::kPanelNameTextThickness),
                     RenderConfig::kPanelNameYPx, RenderConfig::kPanelNameFontSize, kNameColor,
                     RenderConfig::kPanelNameTextThickness);

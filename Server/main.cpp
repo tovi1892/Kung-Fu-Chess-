@@ -1,5 +1,6 @@
+#include <algorithm>
 #include <chrono>
-#include <iostream>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -11,8 +12,10 @@
 #include <variant>
 #include <vector>
 
+#include "AccountStore.hpp"
 #include "Room.hpp"
 
+#include "Network/Logger.hpp"
 #include "Network/Protocol.hpp"
 #include "Network/WsServerTransport.hpp"
 
@@ -24,18 +27,48 @@ namespace {
 constexpr int kPort = 7777;
 constexpr int kTickMs = 16;
 
+// Matchmaking (decision #3 in the Phase 4 plan).
+constexpr int kEloMatchRangeElo = 100;
+constexpr auto kQuickMatchTimeout = std::chrono::seconds(60);  // matches the presentation's "1 min"
+
+// Disconnect grace period before an automatic forfeit (decision #4).
+constexpr int kForfeitGraceMs = 20000;  // matches the presentation's "20 sec"
+
+// An authenticated (LOGIN_OK'd) connection that hasn't necessarily joined a room yet.
+struct AuthenticatedSession {
+    std::string username;
+    int rating;
+};
+
+// A connection searching for a quick-match opponent, waiting to be paired or to time out.
+struct WaitingPlayer {
+    WsServerTransport::ConnectionId id;
+    std::string username;
+    int rating;
+    std::chrono::steady_clock::time_point deadline;
+};
+
 }  // namespace
 
 int main() {
-    // Guards every access to rooms/connectionRoom/pendingConnections/openQuickMatchKey
-    // below - IXWebSocket delivers connect/message/disconnect callbacks on its own
-    // background I/O thread(s), while GameEngine/Controller were built single-threaded.
+    // Guards every access to rooms/connectionRoom/pendingConnections/authenticatedConnections/
+    // quickMatchWaiting/pendingOutbox below - IXWebSocket delivers connect/message/disconnect
+    // callbacks on its own background I/O thread(s), while GameEngine/Controller were built
+    // single-threaded.
     std::mutex gameMutex;
 
-    // A connection lives here from the moment it opens until its JOIN arrives (or it
-    // disconnects first) - it isn't in any room yet, and its clicks are ignored, until
-    // it has actually joined.
+    AccountStore accounts("accounts.db");
+    Logger logger("SERVER", "logs/server.log");
+
+    // A connection lives here from the moment it opens until its LOGIN succeeds (or it
+    // disconnects first) - nothing else it sends means anything yet.
     std::unordered_set<WsServerTransport::ConnectionId> pendingConnections;
+
+    // Authenticated connections not yet routed into a room - moves out once JOIN pairs
+    // them (quick match) or seats them (Create/Join), but the entry itself lives here for
+    // the connection's whole lifetime so onDisconnect/click-routing can always look up
+    // "who is this."
+    std::unordered_map<WsServerTransport::ConnectionId, AuthenticatedSession> authenticatedConnections;
 
     // Every room that has ever been created, keyed by room id (quick-match ids are
     // server-generated too, just never shown to anyone - see JoinMode::QuickMatch).
@@ -45,46 +78,105 @@ int main() {
     // Which room a *joined* connection (player or spectator) belongs to.
     std::unordered_map<WsServerTransport::ConnectionId, std::string> connectionRoom;
 
-    // A quick-match room currently waiting for its 2nd player, if any. Deliberately the
-    // simplest possible matchmaking: one waiting slot, not a queue/pool - matches "not
-    // yet: Elo-based matchmaking".
-    std::optional<std::string> openQuickMatchKey;
+    // Quick-match connections currently waiting for an opponent within kEloMatchRangeElo -
+    // a linear scan/list, not a sorted structure, since handling many simultaneous matches
+    // at scale is explicitly deferred to Phase 5.
+    std::vector<WaitingPlayer> quickMatchWaiting;
     int nextQuickMatchId = 0;
 
-    // Next id handed to a Room -> Create - a plain incrementing counter (not
-    // generateRoomKey's random string) so it's short and easy to read aloud/type to a
-    // friend. Never repeats within the process's lifetime, so no uniqueness check needed.
+    // Next id handed to a Room -> Create - a plain incrementing counter (not a random
+    // string) so it's short and easy to read aloud/type to a friend. Never repeats within
+    // the process's lifetime, so no uniqueness check needed.
     int nextNamedRoomId = 0;
+
+    // Messages queued while gameMutex is held, actually sent only after it's released (see
+    // flushOutbox below). Sending directly while holding gameMutex is what caused a real
+    // crash during Phase 4 testing: if ix::WebSocket::send() detects a dead connection, it
+    // can synchronously invoke this transport's Close callback on the *same* thread, which
+    // tries to lock gameMutex again in onDisconnect - a self-deadlock (the same category of
+    // bug already fixed once for WsServerTransport's own clientsMutex_, reintroduced here by
+    // calling server.send()/broadcastToRoom() from inside a gameMutex-locked section).
+    using Outbox = std::vector<std::pair<WsServerTransport::ConnectionId, std::string>>;
+    Outbox pendingOutbox;
 
     WsServerTransport server(kPort);
 
-    auto broadcastToRoom = [&server](const Room& room, const std::string& text) {
+    // Assumes gameMutex is already held by the caller - just records intent, sends nothing.
+    auto queueSend = [&pendingOutbox](const WsServerTransport::ConnectionId& id, const std::string& text) {
+        pendingOutbox.emplace_back(id, text);
+    };
+    auto queueToRoom = [&pendingOutbox](const Room& room, const std::string& text) {
         for (const auto& [id, session] : room.players) {
             (void)session;
-            server.send(id, text);
+            pendingOutbox.emplace_back(id, text);
         }
         for (const auto& id : room.spectators) {
+            pendingOutbox.emplace_back(id, text);
+        }
+    };
+    // Called with gameMutex NOT held - briefly re-locks just long enough to swap out
+    // whatever was queued, then sends every message with no lock held at all.
+    auto flushOutbox = [&server, &pendingOutbox, &gameMutex]() {
+        Outbox outbox;
+        {
+            std::lock_guard<std::mutex> lock(gameMutex);
+            outbox.swap(pendingOutbox);
+        }
+        for (const auto& [id, text] : outbox) {
             server.send(id, text);
         }
     };
 
+    // Shared by both ways a match can end (a real king capture's GameEnded, or a
+    // disconnect countdown elapsing) - looks up both players' usernames from room.players
+    // (must still be present - callers run this before any post-match player/spectator
+    // bookkeeping), applies the standard Elo update, and queues the resulting ratings.
+    // Always called with gameMutex already held.
+    auto applyMatchResult = [&accounts, &queueToRoom, &logger](Room& room, PlayerColor winnerColor) {
+        std::string winnerName, loserName;
+        for (const auto& [id, session] : room.players) {
+            (void)id;
+            if (session.color == winnerColor) {
+                winnerName = session.username;
+            } else {
+                loserName = session.username;
+            }
+        }
+        if (winnerName.empty() || loserName.empty()) {
+            return;  // shouldn't happen - defensive, not a real expected path
+        }
+
+        const auto elo = accounts.recordResult(winnerName, loserName);
+        const int whiteRating = winnerColor == PlayerColor::White ? elo.newWinnerRating : elo.newLoserRating;
+        const int blackRating = winnerColor == PlayerColor::White ? elo.newLoserRating : elo.newWinnerRating;
+        queueToRoom(room, encodeRatings(whiteRating, blackRating));
+        logger.log("room \"" + room.key + "\": rating update " + winnerName + " -> " +
+                   std::to_string(elo.newWinnerRating) + ", " + loserName + " -> " +
+                   std::to_string(elo.newLoserRating));
+    };
+
     // Broadcasts every bus event to everyone in that room (players + spectators) the
-    // instant it happens. Captures a stable Room* rather than re-looking the key up each
-    // time - safe because a Room, once inserted into `rooms` via unique_ptr, never moves,
-    // even if the map itself rehashes.
-    auto registerRoomBroadcasts = [&broadcastToRoom](Room& room) {
+    // instant it happens - always fires synchronously from within a gameMutex-locked call
+    // (room.game->start()/wait()), so queueing here (not sending) is required, not optional.
+    // Captures a stable Room* rather than re-looking the key up each time - safe because a
+    // Room, once inserted into `rooms` via unique_ptr, never moves, even if the map itself
+    // rehashes.
+    auto registerRoomBroadcasts = [&queueToRoom, &applyMatchResult, &logger](Room& room) {
         Room* roomPtr = &room;
-        room.game->onMoveStarted().subscribe([&broadcastToRoom, roomPtr](const MoveStarted& event) {
-            broadcastToRoom(*roomPtr, encodeMoveStarted(event));
+        room.game->onMoveStarted().subscribe([&queueToRoom, roomPtr](const MoveStarted& event) {
+            queueToRoom(*roomPtr, encodeMoveStarted(event));
         });
-        room.game->onPieceCaptured().subscribe([&broadcastToRoom, roomPtr](const PieceCaptured& event) {
-            broadcastToRoom(*roomPtr, encodePieceCaptured(event));
+        room.game->onPieceCaptured().subscribe([&queueToRoom, roomPtr](const PieceCaptured& event) {
+            queueToRoom(*roomPtr, encodePieceCaptured(event));
         });
-        room.game->onGameStarted().subscribe([&broadcastToRoom, roomPtr](const GameStarted&) {
-            broadcastToRoom(*roomPtr, encodeGameStarted());
+        room.game->onGameStarted().subscribe([&queueToRoom, roomPtr](const GameStarted&) {
+            queueToRoom(*roomPtr, encodeGameStarted());
         });
-        room.game->onGameEnded().subscribe([&broadcastToRoom, roomPtr](const GameEnded& event) {
-            broadcastToRoom(*roomPtr, encodeGameEnded(event));
+        room.game->onGameEnded().subscribe([&queueToRoom, &applyMatchResult, &logger, roomPtr](const GameEnded& event) {
+            queueToRoom(*roomPtr, encodeGameEnded(event));
+            logger.log("room \"" + roomPtr->key + "\": game ended, " +
+                       (event.winner == PlayerColor::White ? "White" : "Black") + " wins");
+            applyMatchResult(*roomPtr, event.winner);
         });
     };
 
@@ -111,144 +203,245 @@ int main() {
     server.onConnect([&](const WsServerTransport::ConnectionId& id) {
         std::lock_guard<std::mutex> lock(gameMutex);
         pendingConnections.insert(id);
-        std::cout << "[server] connection " << id << " opened - waiting for JOIN" << std::endl;
+        logger.log("connection " + id + " opened - waiting for LOGIN");
     });
 
     server.onMessage([&](const WsServerTransport::ConnectionId& id, const std::string& text) {
-        std::lock_guard<std::mutex> lock(gameMutex);
+        // do/while(false) so every early exit below (`break`) still falls through to
+        // release the lock and call flushOutbox() - see the Outbox comment above for why
+        // sends must never happen while gameMutex is held.
+        do {
+            std::lock_guard<std::mutex> lock(gameMutex);
 
-        const auto decoded = decode(text);
+            const auto decoded = decode(text);
 
-        // Still waiting to join: the only message that means anything from this
-        // connection is JOIN - anything else (e.g. a stray click before the username
-        // window closed) is ignored.
-        if (pendingConnections.count(id) > 0) {
-            const auto* join = std::get_if<JoinMessage>(&decoded);
-            if (!join) {
-                return;
+            // Still waiting to log in: the only message that means anything from this
+            // connection is LOGIN - anything else is ignored. A failed login does not
+            // disconnect - the same connection may retry with a corrected password.
+            if (pendingConnections.count(id) > 0) {
+                const auto* login = std::get_if<LoginMessage>(&decoded);
+                if (!login) {
+                    break;
+                }
+
+                const auto result = accounts.login(login->username, login->password);
+                if (result.success) {
+                    pendingConnections.erase(id);
+                    authenticatedConnections[id] = AuthenticatedSession{login->username, result.rating};
+                    queueSend(id, encodeLoginOk(result.rating));
+                    logger.log(login->username + " logged in (rating " + std::to_string(result.rating) + ")");
+                } else {
+                    queueSend(id, encodeLoginFail(result.failureReason));
+                    logger.log("login failed for \"" + login->username + "\": " + result.failureReason);
+                }
+                break;
             }
-            pendingConnections.erase(id);
 
-            std::string roomKey;
-            switch (join->mode) {
-                case JoinMode::QuickMatch:
-                    if (openQuickMatchKey.has_value()) {
-                        roomKey = *openQuickMatchKey;
-                        openQuickMatchKey.reset();  // about to have 2 players
+            // Authenticated but not yet routed into a room: the only message that means
+            // anything here is JOIN.
+            const auto authIt = authenticatedConnections.find(id);
+            if (authIt != authenticatedConnections.end() && connectionRoom.find(id) == connectionRoom.end()) {
+                const auto* join = std::get_if<JoinMessage>(&decoded);
+                if (!join) {
+                    break;
+                }
+                const std::string username = authIt->second.username;
+                const int rating = authIt->second.rating;
+
+                if (join->mode == JoinMode::QuickMatch) {
+                    const auto waitingIt =
+                        std::find_if(quickMatchWaiting.begin(), quickMatchWaiting.end(), [&](const WaitingPlayer& w) {
+                            return std::abs(w.rating - rating) <= kEloMatchRangeElo;
+                        });
+
+                    if (waitingIt != quickMatchWaiting.end()) {
+                        const WaitingPlayer waiting = *waitingIt;
+                        quickMatchWaiting.erase(waitingIt);
+
+                        const std::string roomKey = "quickmatch-" + std::to_string(nextQuickMatchId++);
+                        Room& room = getOrCreateRoom(roomKey);
+                        connectionRoom[waiting.id] = roomKey;
+                        connectionRoom[id] = roomKey;
+                        room.players[waiting.id] = PlayerSession{waiting.username, PlayerColor::White,
+                                                                  std::make_shared<Controller>(room.game)};
+                        room.players[id] =
+                            PlayerSession{username, PlayerColor::Black, std::make_shared<Controller>(room.game)};
+
+                        queueSend(waiting.id, encodeWelcome(PlayerColor::White));
+                        queueSend(id, encodeWelcome(PlayerColor::Black));
+                        queueToRoom(room, encodePlayers(waiting.username, username));
+                        room.game->start();
+                        logger.log("room \"" + roomKey + "\": quick match (" + waiting.username + " vs " + username +
+                                   ") - game started");
                     } else {
-                        roomKey = "quickmatch-" + std::to_string(nextQuickMatchId++);
-                        openQuickMatchKey = roomKey;
+                        quickMatchWaiting.push_back(WaitingPlayer{
+                            id, username, rating, std::chrono::steady_clock::now() + kQuickMatchTimeout});
+                        logger.log(username + " searching for a quick-match opponent (rating " +
+                                   std::to_string(rating) + ")");
                     }
                     break;
-                case JoinMode::CreateRoom:
+                }
+
+                std::string roomKey;
+                if (join->mode == JoinMode::CreateRoom) {
                     roomKey = std::to_string(nextNamedRoomId++);
-                    break;
-                case JoinMode::JoinRoom:
+                } else {
                     roomKey = join->room;
-                    break;
-            }
-
-            Room& room = getOrCreateRoom(roomKey);
-            connectionRoom[id] = roomKey;
-            const bool isNamedRoom = join->mode != JoinMode::QuickMatch;
-
-            if (room.players.size() < 2) {
-                const PlayerColor color = room.players.empty() ? PlayerColor::White : PlayerColor::Black;
-                room.players[id] = PlayerSession{join->username, color, std::make_shared<Controller>(room.game)};
-                std::cout << "[server] " << join->username << " joined room \"" << roomKey << "\" as "
-                          << (color == PlayerColor::White ? "White" : "Black") << std::endl;
-
-                server.send(id, encodeWelcome(color));
-                if (isNamedRoom) {
-                    server.send(id, encodeRoom(roomKey));
                 }
 
-                if (room.players.size() == 2) {
+                Room& room = getOrCreateRoom(roomKey);
+                connectionRoom[id] = roomKey;
+
+                if (room.players.size() < 2) {
+                    const PlayerColor color = room.players.empty() ? PlayerColor::White : PlayerColor::Black;
+                    room.players[id] = PlayerSession{username, color, std::make_shared<Controller>(room.game)};
+                    logger.log(username + " joined room \"" + roomKey + "\" as " +
+                               (color == PlayerColor::White ? "White" : "Black"));
+
+                    queueSend(id, encodeWelcome(color));
+                    queueSend(id, encodeRoom(roomKey));
+
+                    if (room.players.size() == 2) {
+                        const auto [whiteName, blackName] = namesOf(room);
+                        queueToRoom(room, encodePlayers(whiteName, blackName));
+                        room.game->start();
+                        logger.log("room \"" + roomKey + "\": both players joined (" + whiteName + " vs " +
+                                   blackName + ") - game started");
+                    }
+                } else {
+                    room.spectators.insert(id);
+                    logger.log(username + " is spectating room \"" + roomKey + "\"");
+
+                    queueSend(id, encodeSpectate());
+                    queueSend(id, encodeRoom(roomKey));
                     const auto [whiteName, blackName] = namesOf(room);
-                    broadcastToRoom(room, encodePlayers(whiteName, blackName));
-                    room.game->start();
-                    std::cout << "[server] room \"" << roomKey << "\": both players joined (" << whiteName
-                              << " vs " << blackName << ") - game started" << std::endl;
+                    queueSend(id, encodePlayers(whiteName, blackName));
                 }
-            } else {
-                room.spectators.insert(id);
-                std::cout << "[server] " << join->username << " is spectating room \"" << roomKey << "\""
-                          << std::endl;
+                break;
+            }
 
-                server.send(id, encodeSpectate());
-                if (isNamedRoom) {
-                    server.send(id, encodeRoom(roomKey));
+            // Already in a room: the only message a joined connection ever sends is a click.
+            const auto roomIt = connectionRoom.find(id);
+            if (roomIt == connectionRoom.end()) {
+                break;  // a rejected/unrecognized connection - ignore whatever it sends
+            }
+            Room& room = *rooms.at(roomIt->second);
+
+            const auto sessionIt = room.players.find(id);
+            if (sessionIt == room.players.end()) {
+                break;  // a spectator (or a forfeited match's former players) - clicks do nothing
+            }
+
+            const auto* click = std::get_if<ClickMessage>(&decoded);
+            if (!click) {
+                break;
+            }
+
+            PlayerSession& session = sessionIt->second;
+            const Position cell(click->row, click->col);
+
+            // The one rule that doesn't exist locally today (one mouse could always move
+            // either color): a connection may only ever *select* its own color's pieces.
+            // Once a selection is active, it was already validated here, so the second
+            // click (the actual move/jump target) can go straight through.
+            if (!session.controller->hasSelection()) {
+                const auto piece = room.game->getBoard()->pieceAt(cell);
+                if (!piece.has_value() || !piece.value() || piece.value()->color() != session.color) {
+                    break;
                 }
-                const auto [whiteName, blackName] = namesOf(room);
-                server.send(id, encodePlayers(whiteName, blackName));
             }
-            return;
-        }
 
-        // Already joined: the only message a joined connection ever sends is a click.
-        const auto roomIt = connectionRoom.find(id);
-        if (roomIt == connectionRoom.end()) {
-            return;  // a rejected/unrecognized connection - ignore whatever it sends
-        }
-        Room& room = *rooms.at(roomIt->second);
+            session.controller->handleCellClick(cell.row(), cell.col());
+        } while (false);
 
-        const auto sessionIt = room.players.find(id);
-        if (sessionIt == room.players.end()) {
-            return;  // a spectator - clicks do nothing
-        }
-
-        const auto* click = std::get_if<ClickMessage>(&decoded);
-        if (!click) {
-            return;
-        }
-
-        PlayerSession& session = sessionIt->second;
-        const Position cell(click->row, click->col);
-
-        // The one rule that doesn't exist locally today (one mouse could always move
-        // either color): a connection may only ever *select* its own color's pieces.
-        // Once a selection is active, it was already validated here, so the second
-        // click (the actual move/jump target) can go straight through.
-        if (!session.controller->hasSelection()) {
-            const auto piece = room.game->getBoard()->pieceAt(cell);
-            if (!piece.has_value() || !piece.value() || piece.value()->color() != session.color) {
-                return;
-            }
-        }
-
-        session.controller->handleCellClick(cell.row(), cell.col());
+        flushOutbox();
     });
 
     server.onDisconnect([&](const WsServerTransport::ConnectionId& id) {
-        std::lock_guard<std::mutex> lock(gameMutex);
-        pendingConnections.erase(id);
-        const auto it = connectionRoom.find(id);
-        if (it != connectionRoom.end()) {
-            const auto roomIt = rooms.find(it->second);
-            if (roomIt != rooms.end()) {
-                roomIt->second->players.erase(id);
-                roomIt->second->spectators.erase(id);
+        {
+            std::lock_guard<std::mutex> lock(gameMutex);
+
+            pendingConnections.erase(id);
+
+            quickMatchWaiting.erase(std::remove_if(quickMatchWaiting.begin(), quickMatchWaiting.end(),
+                                                    [&](const WaitingPlayer& w) { return w.id == id; }),
+                                     quickMatchWaiting.end());
+
+            const auto roomIt = connectionRoom.find(id);
+            if (roomIt != connectionRoom.end()) {
+                Room& room = *rooms.at(roomIt->second);
+                const auto sessionIt = room.players.find(id);
+
+                if (sessionIt != room.players.end() && room.game->isRunning()) {
+                    // A player disconnected mid-game: start the forfeit grace period instead
+                    // of dropping their seat immediately - their username is still needed
+                    // for the eventual Elo update (see decision #4 in the Phase 4 plan).
+                    const PlayerColor disconnectedColor = sessionIt->second.color;
+                    room.pendingForfeit = PendingForfeit{
+                        disconnectedColor, std::chrono::steady_clock::now() + std::chrono::milliseconds(kForfeitGraceMs)};
+                    queueToRoom(room, encodeForfeitWarning(disconnectedColor, kForfeitGraceMs));
+                    logger.log("room \"" + room.key + "\": " + sessionIt->second.username +
+                               " disconnected mid-game - forfeit countdown started");
+                } else {
+                    room.players.erase(id);
+                    room.spectators.erase(id);
+                }
+                connectionRoom.erase(roomIt);
             }
-            connectionRoom.erase(it);
+
+            // Unconditional, regardless of which branch above ran (or none did): a
+            // connection that never joined a room, or whose room already cleared it via a
+            // prior forfeit/game-end resolution, must never leave a stale entry behind.
+            authenticatedConnections.erase(id);
+
+            logger.log("connection " + id + " disconnected");
         }
-        std::cout << "[server] connection " << id << " disconnected" << std::endl;
+        flushOutbox();
     });
 
     server.start();
-    std::cout << "[server] listening on port " << kPort << std::endl;
+    logger.log("listening on port " + std::to_string(kPort));
 
     while (true) {
-        // Recipient ids must be copied out here too, not just the render state: room.players/
-        // spectators are gameMutex-protected shared state, and a disconnect on another thread
-        // can erase from them at any time. Reading them via broadcastToRoom(Room&, ...) after
-        // releasing the lock (as the encode/send step below deliberately does, to avoid holding
-        // gameMutex during network I/O) would be an unsynchronized concurrent read/write on the
-        // same unordered_maps - undefined behavior, not just a stale-data risk.
-        std::vector<std::pair<std::vector<std::string>, std::vector<RenderPiece>>> snapshots;
         {
             std::lock_guard<std::mutex> lock(gameMutex);
+            const auto now = std::chrono::steady_clock::now();
+
+            for (auto it = quickMatchWaiting.begin(); it != quickMatchWaiting.end();) {
+                if (now >= it->deadline) {
+                    queueSend(it->id, encodeNoOpponent());
+                    logger.log(it->username + " quick-match search timed out - no opponent found");
+                    it = quickMatchWaiting.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+
             for (auto& [key, roomPtr] : rooms) {
                 (void)key;
+
+                if (roomPtr->pendingForfeit.has_value() && now >= roomPtr->pendingForfeit->deadline) {
+                    const PlayerColor winner = roomPtr->pendingForfeit->disconnectedColor == PlayerColor::White
+                                                    ? PlayerColor::Black
+                                                    : PlayerColor::White;
+                    queueToRoom(*roomPtr, encodeForfeit(winner));
+                    logger.log("room \"" + roomPtr->key + "\": forfeit resolved, " +
+                               (winner == PlayerColor::White ? "White" : "Black") + " wins");
+                    applyMatchResult(*roomPtr, winner);
+
+                    // Move everyone still tracked into spectators (keeps receiving STATE)
+                    // and stop the simulation - GameEngine itself has no idea a forfeit
+                    // happened (no king was captured), so without this it would happily
+                    // keep running and could later fire a second, conflicting GameEnded.
+                    for (const auto& [playerId, session] : roomPtr->players) {
+                        (void)session;
+                        roomPtr->spectators.insert(playerId);
+                    }
+                    roomPtr->players.clear();
+                    roomPtr->game->stop();
+                    roomPtr->pendingForfeit.reset();
+                }
+
                 roomPtr->game->wait(kTickMs);  // a no-op until both players have joined and game->start() ran
 
                 std::vector<std::string> recipients;
@@ -260,15 +453,13 @@ int main() {
                 for (const auto& id : roomPtr->spectators) {
                     recipients.push_back(id);
                 }
-                snapshots.emplace_back(std::move(recipients), roomPtr->game->getRenderState());
+                const std::string stateText = encodeState(roomPtr->game->getRenderState());
+                for (const auto& id : recipients) {
+                    queueSend(id, stateText);
+                }
             }
         }
-        for (const auto& [recipients, state] : snapshots) {
-            const std::string text = encodeState(state);
-            for (const auto& id : recipients) {
-                server.send(id, text);
-            }
-        }
+        flushOutbox();
         std::this_thread::sleep_for(std::chrono::milliseconds(kTickMs));
     }
 }

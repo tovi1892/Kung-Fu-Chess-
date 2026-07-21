@@ -24,12 +24,58 @@ enum class JoinMode {
     JoinRoom,
 };
 
-// Client -> server: sent once, right after the connection opens. A connection is only
-// placed into a room once this arrives (see Server/main.cpp's pendingConnections).
-struct JoinMessage {
+// Client -> server: sent once, right after the connection opens - every connection must
+// log in before anything else (see Server/main.cpp's pendingLogin state). Auto-registers a
+// new account on first use; an existing username must match its stored password.
+struct LoginMessage {
     std::string username;
+    std::string password;
+};
+
+// Server -> client, sent once right after a connection's LOGIN succeeds.
+struct LoginOkMessage {
+    int rating;
+};
+
+// Server -> client, sent once right after a connection's LOGIN fails (e.g. wrong password
+// for an existing username) - the connection is *not* dropped, it may retry with a
+// corrected password on the same socket.
+struct LoginFailMessage {
+    std::string reason;  // machine-readable, e.g. "bad_password"
+};
+
+// Client -> server: sent once a connection is authenticated (see LoginOkMessage). A
+// connection is only placed into a room once this arrives (see Server/main.cpp's
+// authenticatedConnections). No username field - the server already knows who this
+// connection is from its successful LOGIN.
+struct JoinMessage {
     JoinMode mode;
     std::string room;  // meaningful only when mode == JoinRoom
+};
+
+// Server -> client: a QuickMatch search found nobody within range before its timeout
+// elapsed - the client should show a message and let the player retry.
+struct NoOpponentMessage {};
+
+// Server -> client, broadcast to a room's remaining occupants the instant a player
+// disconnects mid-game - lets the opponent's client render a literal countdown.
+struct ForfeitWarningMessage {
+    PlayerColor disconnectedColor;
+    int graceMs;
+};
+
+// Server -> client, broadcast once a disconnect's grace period elapses without the
+// disconnected player coming back - winner is whichever color didn't disconnect. A
+// separate concept from GameEnded (which only ever means "a king was captured").
+struct ForfeitMessage {
+    PlayerColor winner;
+};
+
+// Server -> client, broadcast right after GAME_END or FORFEIT - both players' post-match
+// Elo ratings, so each client can update its own scoreboard display.
+struct RatingsMessage {
+    int whiteRating;
+    int blackRating;
 };
 
 // Client -> server: the only other message a client ever sends.
@@ -65,17 +111,26 @@ struct StateMessage {
     std::vector<RenderPiece> pieces;
 };
 
-using DecodedMessage = std::variant<std::monostate, JoinMessage, ClickMessage, WelcomeMessage,
-                                     SpectateMessage, RoomMessage, PlayersMessage, StateMessage,
+using DecodedMessage = std::variant<std::monostate, LoginMessage, LoginOkMessage, LoginFailMessage,
+                                     JoinMessage, ClickMessage, WelcomeMessage, SpectateMessage,
+                                     RoomMessage, PlayersMessage, StateMessage, NoOpponentMessage,
+                                     ForfeitWarningMessage, ForfeitMessage, RatingsMessage,
                                      MoveStarted, PieceCaptured, GameStarted, GameEnded>;
 
-std::string encodeJoin(const std::string& username, JoinMode mode, const std::string& room = "");
+std::string encodeLogin(const std::string& username, const std::string& password);
+std::string encodeLoginOk(int rating);
+std::string encodeLoginFail(const std::string& reason);
+std::string encodeJoin(JoinMode mode, const std::string& room = "");
 std::string encodeClick(int row, int col);
 std::string encodeWelcome(PlayerColor color);
 std::string encodeSpectate();
 std::string encodeRoom(const std::string& key);
 std::string encodePlayers(const std::string& white, const std::string& black);
 std::string encodeState(const std::vector<RenderPiece>& pieces);
+std::string encodeNoOpponent();
+std::string encodeForfeitWarning(PlayerColor disconnectedColor, int graceMs);
+std::string encodeForfeit(PlayerColor winner);
+std::string encodeRatings(int whiteRating, int blackRating);
 std::string encodeMoveStarted(const MoveStarted& event);
 std::string encodePieceCaptured(const PieceCaptured& event);
 std::string encodeGameStarted();

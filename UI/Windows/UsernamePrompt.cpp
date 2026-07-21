@@ -14,15 +14,19 @@ namespace {
 constexpr int kEditId = 101;
 constexpr int kPlayButtonId = 102;
 constexpr int kRoomButtonId = 103;
+constexpr int kPasswordEditId = 104;
 constexpr size_t kMaxUsernameLength = 20;
 constexpr size_t kMaxRoomLength = 20;
+constexpr size_t kMaxPasswordLength = 64;
 
-// Owns the main window's one Edit control's handle and the outcome of the prompt - set
-// from WndProc, read back by show() once the message loop exits. One of these per show()
-// call; never shared or reused, so there's no lifetime concern beyond the single blocking
-// call.
+// Owns the main window's two Edit controls' handles, the outcome of the prompt, and the
+// error message (if any) to display - set from WndProc, read back by show() once the
+// message loop exits. One of these per show() call; never shared or reused, so there's no
+// lifetime concern beyond the single blocking call.
 struct PromptState {
     HWND edit = nullptr;
+    HWND passwordEdit = nullptr;
+    std::string errorMessage;                // shown once, at WM_CREATE - not updated live
     std::optional<JoinInfo> result;  // set on Play/Room; stays nullopt if the window is closed instead
     bool done = false;
 };
@@ -31,9 +35,10 @@ PromptState* stateFor(HWND hwnd) {
     return reinterpret_cast<PromptState*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 }
 
-// The wire protocol is space-delimited text, so a username/room id can't contain
+// The wire protocol is space-delimited text, so a username/password/room id can't contain
 // whitespace - strip it rather than reject it, so a space-happy typist still gets
-// *something* sent. Shared by both the username field and the room popup's edit box.
+// *something* sent. Shared by the username field, the password field, and the room
+// popup's edit box.
 std::string sanitize(const std::string& raw, size_t maxLength) {
     std::string cleaned;
     cleaned.reserve(raw.size());
@@ -192,7 +197,7 @@ std::optional<RoomPopupResult> showRoomPopup(HINSTANCE hInstance, HWND owner) {
     return std::nullopt;
 }
 
-// --- Main window: username + Play (quick match) + Room (create/join a specific room) --
+// --- Main window: username + password + Play (quick match) + Room (create/join) -------
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -201,7 +206,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
             auto* state = reinterpret_cast<PromptState*>(cs->lpCreateParams);
 
-            CreateWindowExA(0, "STATIC", "Enter a username:", WS_CHILD | WS_VISIBLE, RenderConfig::kUsernamePromptLabelX,
+            CreateWindowExA(0, "STATIC", "Username:", WS_CHILD | WS_VISIBLE, RenderConfig::kUsernamePromptLabelX,
                              RenderConfig::kUsernamePromptLabelY, RenderConfig::kUsernamePromptLabelWidth,
                              RenderConfig::kUsernamePromptLabelHeight, hwnd, nullptr, cs->hInstance, nullptr);
             state->edit = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
@@ -209,6 +214,24 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                                            RenderConfig::kUsernamePromptEditWidth, RenderConfig::kUsernamePromptEditHeight,
                                            hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditId)), cs->hInstance,
                                            nullptr);
+
+            CreateWindowExA(0, "STATIC", "Password:", WS_CHILD | WS_VISIBLE, RenderConfig::kUsernamePromptLabelX,
+                             RenderConfig::kUsernamePromptPasswordLabelY, RenderConfig::kUsernamePromptLabelWidth,
+                             RenderConfig::kUsernamePromptLabelHeight, hwnd, nullptr, cs->hInstance, nullptr);
+            // ES_PASSWORD masks every typed character as '*' - the one thing that needs to
+            // be explicit here, everything else is identical to the username EDIT above.
+            state->passwordEdit =
+                CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
+                                 RenderConfig::kUsernamePromptEditX, RenderConfig::kUsernamePromptPasswordEditY,
+                                 RenderConfig::kUsernamePromptEditWidth, RenderConfig::kUsernamePromptEditHeight, hwnd,
+                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(kPasswordEditId)), cs->hInstance,
+                                 nullptr);
+
+            CreateWindowExA(0, "STATIC", state->errorMessage.c_str(), WS_CHILD | WS_VISIBLE,
+                             RenderConfig::kUsernamePromptLabelX, RenderConfig::kUsernamePromptErrorLabelY,
+                             RenderConfig::kUsernamePromptLabelWidth, RenderConfig::kUsernamePromptErrorLabelHeight,
+                             hwnd, nullptr, cs->hInstance, nullptr);
+
             CreateWindowExA(0, "BUTTON", "Play", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
                              RenderConfig::kUsernamePromptPlayButtonX, RenderConfig::kUsernamePromptButtonY,
                              RenderConfig::kUsernamePromptButtonWidth, RenderConfig::kUsernamePromptButtonHeight, hwnd,
@@ -226,20 +249,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 break;
             }
 
-            if (LOWORD(wParam) == kPlayButtonId) {
-                char buffer[256] = {};
-                GetWindowTextA(state->edit, buffer, sizeof(buffer));
-                state->result = JoinInfo{sanitize(buffer, kMaxUsernameLength), JoinInfo::Mode::QuickMatch, ""};
-                state->done = true;
-                DestroyWindow(hwnd);
-                return 0;
-            }
+            if (LOWORD(wParam) == kPlayButtonId || LOWORD(wParam) == kRoomButtonId) {
+                char userBuffer[256] = {};
+                GetWindowTextA(state->edit, userBuffer, sizeof(userBuffer));
+                const std::string username = sanitize(userBuffer, kMaxUsernameLength);
 
-            if (LOWORD(wParam) == kRoomButtonId) {
-                char buffer[256] = {};
-                GetWindowTextA(state->edit, buffer, sizeof(buffer));
-                const std::string username = sanitize(buffer, kMaxUsernameLength);
+                char passBuffer[256] = {};
+                GetWindowTextA(state->passwordEdit, passBuffer, sizeof(passBuffer));
+                const std::string password = sanitize(passBuffer, kMaxPasswordLength);
 
+                if (LOWORD(wParam) == kPlayButtonId) {
+                    state->result = JoinInfo{username, password, JoinInfo::Mode::QuickMatch, ""};
+                    state->done = true;
+                    DestroyWindow(hwnd);
+                    return 0;
+                }
+
+                // Room button.
                 EnableWindow(hwnd, FALSE);
                 const auto choice = showRoomPopup(GetModuleHandle(nullptr), hwnd);
                 EnableWindow(hwnd, TRUE);
@@ -250,14 +276,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 }
 
                 if (choice->create) {
-                    state->result = JoinInfo{username, JoinInfo::Mode::CreateRoom, ""};
+                    state->result = JoinInfo{username, password, JoinInfo::Mode::CreateRoom, ""};
                 } else {
                     const std::string room = sanitize(choice->typedRoom, kMaxRoomLength);
                     if (room.empty()) {
                         SetFocus(state->edit);
                         return 0;  // Join with an empty id is a no-op - stay on the main window
                     }
-                    state->result = JoinInfo{username, JoinInfo::Mode::JoinRoom, room};
+                    state->result = JoinInfo{username, password, JoinInfo::Mode::JoinRoom, room};
                 }
                 state->done = true;
                 DestroyWindow(hwnd);
@@ -293,6 +319,15 @@ std::optional<JoinInfo> promptOnConsole() {
         return std::nullopt;
     }
 
+    // No portable console-masking without extra platform code - accepted as a minor gap
+    // in an already-degraded last-resort path (the native window is always tried first).
+    std::cout << "Password (visible - this fallback has no input masking): " << std::flush;
+    std::string passwordLine;
+    if (!std::getline(std::cin, passwordLine)) {
+        return std::nullopt;
+    }
+    const std::string password = sanitize(passwordLine, kMaxPasswordLength);
+
     std::cout << "Room id to create/join, \"create\" for a fresh room, or blank for quick match: " << std::flush;
     std::string roomLine;
     if (!std::getline(std::cin, roomLine)) {
@@ -300,18 +335,19 @@ std::optional<JoinInfo> promptOnConsole() {
     }
     const std::string room = sanitize(roomLine, kMaxRoomLength);
     if (room.empty()) {
-        return JoinInfo{username, JoinInfo::Mode::QuickMatch, ""};
+        return JoinInfo{username, password, JoinInfo::Mode::QuickMatch, ""};
     }
     if (room == "create") {
-        return JoinInfo{username, JoinInfo::Mode::CreateRoom, ""};
+        return JoinInfo{username, password, JoinInfo::Mode::CreateRoom, ""};
     }
-    return JoinInfo{username, JoinInfo::Mode::JoinRoom, room};
+    return JoinInfo{username, password, JoinInfo::Mode::JoinRoom, room};
 }
 
 }  // namespace
 
-std::optional<JoinInfo> UsernamePrompt::show() {
+std::optional<JoinInfo> UsernamePrompt::show(const std::string& errorMessage) {
     PromptState state;
+    state.errorMessage = errorMessage;
 
     const char* className = "KungFuChessUsernamePrompt";
     WNDCLASSA wc = {};

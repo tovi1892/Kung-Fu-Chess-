@@ -77,7 +77,7 @@ struct RenderConfig {
 
     // --- Username prompt native window layout ---
     static constexpr int kUsernamePromptWindowWidth = 320;
-    static constexpr int kUsernamePromptWindowHeight = 160;
+    static constexpr int kUsernamePromptWindowHeight = 220;
     static constexpr int kUsernamePromptLabelX = 20;
     static constexpr int kUsernamePromptLabelY = 20;
     static constexpr int kUsernamePromptLabelWidth = 260;
@@ -86,8 +86,15 @@ struct RenderConfig {
     static constexpr int kUsernamePromptEditY = 45;
     static constexpr int kUsernamePromptEditWidth = 260;
     static constexpr int kUsernamePromptEditHeight = 24;
+    // Password label/edit reuse the username field's X/width/height - same shape, just a
+    // row lower. The edit control itself additionally gets ES_PASSWORD (masked input).
+    static constexpr int kUsernamePromptPasswordLabelY = 79;
+    static constexpr int kUsernamePromptPasswordEditY = 104;
+    // Login-failure/no-opponent error text, shown only when non-empty.
+    static constexpr int kUsernamePromptErrorLabelY = 133;
+    static constexpr int kUsernamePromptErrorLabelHeight = 20;
     // Play and Room sit side by side on the same row.
-    static constexpr int kUsernamePromptButtonY = 90;
+    static constexpr int kUsernamePromptButtonY = 161;
     static constexpr int kUsernamePromptButtonWidth = 90;
     static constexpr int kUsernamePromptButtonHeight = 30;
     static constexpr int kUsernamePromptPlayButtonX = 70;

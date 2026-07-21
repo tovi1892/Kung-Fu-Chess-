@@ -11,6 +11,7 @@
 
 #include "Client/RemoteGameProxy.hpp"
 #include "Geometry/CoordinateMapper.hpp"
+#include "Network/Logger.hpp"
 #include "OpenCV/OpenCvView.hpp"
 #include "Windows/SoundPlayer.hpp"
 #include "Windows/UsernamePrompt.hpp"
@@ -96,25 +97,57 @@ net::JoinMode toJoinMode(JoinInfo::Mode mode) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    const auto join = UsernamePrompt::show();
-    if (!join.has_value()) {
-        std::cout << "No username entered - exiting." << std::endl;
-        return 0;
-    }
+    net::Logger logger("CLIENT", "logs/client.log");
 
     const std::string host = argc >= 2 ? argv[1] : "127.0.0.1";
     const std::string serverUrl = "ws://" + host + ":7777";
 
-    RemoteGameProxy proxy(serverUrl, join->username, toJoinMode(join->mode), join->room);
+    // Username/password/mode -> LOGIN -> JOIN is a retry loop: a wrong password or a
+    // quick-match search timing out both return the player to the same window (with an
+    // explanatory message) rather than the app just exiting or hanging.
+    std::optional<RemoteGameProxy> proxyOpt;  // constructed fresh each retry; never moved,
+                                               // since its internal callbacks capture `this`
+    std::string errorMessage;
+    std::optional<JoinInfo> join;
 
-    std::cout << "Connecting to " << serverUrl << " as \"" << join->username << "\" ..." << std::endl;
-    while (!proxy.hasRole()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    while (true) {
+        join = UsernamePrompt::show(errorMessage);
+        if (!join.has_value()) {
+            logger.log("No username entered - exiting.");
+            return 0;
+        }
+
+        logger.log("Connecting to " + serverUrl + " as \"" + join->username + "\" ...");
+        proxyOpt.emplace(serverUrl, join->username, join->password, toJoinMode(join->mode), join->room);
+        RemoteGameProxy& loginAttempt = *proxyOpt;
+
+        while (!loginAttempt.loginResolved()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        if (loginAttempt.loginFailed()) {
+            errorMessage = "Login failed: " + loginAttempt.loginFailureReason();
+            logger.log(errorMessage);
+            continue;
+        }
+        logger.log(join->username + " logged in (rating " + std::to_string(loginAttempt.myRating()) + ")");
+
+        while (!loginAttempt.hasRole() && !loginAttempt.searchFailed()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        if (loginAttempt.searchFailed()) {
+            errorMessage = "No opponent found within range - try again";
+            logger.log(errorMessage);
+            continue;
+        }
+
+        break;
     }
+
+    RemoteGameProxy& proxy = *proxyOpt;
     if (proxy.isSpectator()) {
-        std::cout << "Connected as a spectator" << std::endl;
+        logger.log("Connected as a spectator");
     } else {
-        std::cout << "Connected as " << (proxy.myColor() == PlayerColor::White ? "White" : "Black") << std::endl;
+        logger.log(std::string("Connected as ") + (proxy.myColor() == PlayerColor::White ? "White" : "Black"));
     }
 
     const int windowSize = 800;
@@ -135,6 +168,7 @@ int main(int argc, char** argv) {
     SoundPlayer sounds;
     Expiring<std::string> banner;
     Expiring<std::pair<Position, Position>> lastMove;
+    bool loggedForfeitWarning = false;  // edge-detect so the log line prints once, not every frame
 
     proxy.onMoveStarted().subscribe([&](const MoveStarted& event) {
         panelFor(scoreboard, event.color).moves.push_back({static_cast<double>(event.elapsedMs), event.notation});
@@ -151,6 +185,14 @@ int main(int argc, char** argv) {
     proxy.onGameEnded().subscribe([&](const GameEnded& event) {
         banner.show(event.winner == PlayerColor::White ? "WHITE WINS" : "BLACK WINS", kBannerDuration);
         sounds.play("UI/assets/sounds/game_end.wav");
+        logger.log(std::string("Game ended - ") + (event.winner == PlayerColor::White ? "White" : "Black") + " wins");
+    });
+    proxy.onForfeit().subscribe([&](const net::ForfeitMessage& event) {
+        banner.show(event.winner == PlayerColor::White ? "WHITE WINS (forfeit)" : "BLACK WINS (forfeit)",
+                    kBannerDuration);
+        sounds.play("UI/assets/sounds/game_end.wav");
+        logger.log(std::string("Opponent disconnected - ") + (event.winner == PlayerColor::White ? "White" : "Black") +
+                   " wins by forfeit");
     });
 
     while (view.isOpen()) {
@@ -164,6 +206,13 @@ int main(int argc, char** argv) {
         }
         if (const auto key = proxy.roomKey(); key.has_value()) {
             scoreboard.roomLabel = "Room: " + *key;
+        }
+        if (!proxy.isSpectator()) {
+            panelFor(scoreboard, proxy.myColor()).rating = proxy.myRating();
+        }
+        if (const auto ratings = proxy.ratings(); ratings.white > 0 || ratings.black > 0) {
+            scoreboard.white.rating = ratings.white;
+            scoreboard.black.rating = ratings.black;
         }
 
         BoardHighlight highlight;
@@ -181,9 +230,22 @@ int main(int argc, char** argv) {
         }
 
         Banner frameBanner;
-        if (const auto text = banner.current(); text.has_value()) {
+        if (const auto forfeitWarning = proxy.forfeitWarning(); forfeitWarning.has_value()) {
+            if (!loggedForfeitWarning) {
+                logger.log(std::string((forfeitWarning->disconnectedColor == PlayerColor::White) ? "White" : "Black") +
+                           " disconnected - forfeit countdown started");
+                loggedForfeitWarning = true;
+            }
+            const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                forfeitWarning->deadline - std::chrono::steady_clock::now());
+            const int secondsLeft = std::max(0, static_cast<int>((remaining.count() + 999) / 1000));
+            frameBanner.visible = true;
+            frameBanner.text = "Opponent disconnected - auto-win in " + std::to_string(secondsLeft) + "s";
+        } else if (const auto text = banner.current(); text.has_value()) {
             frameBanner.visible = true;
             frameBanner.text = *text;
+        } else {
+            loggedForfeitWarning = false;
         }
 
         view.render(proxy.getRenderState(), highlight, scoreboard, frameBanner);

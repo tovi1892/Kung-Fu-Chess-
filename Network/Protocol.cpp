@@ -63,8 +63,20 @@ char joinModeChar(JoinMode mode) {
 
 }  // namespace
 
-std::string encodeJoin(const std::string& username, JoinMode mode, const std::string& room) {
-    std::string out = std::string("JOIN ") + joinModeChar(mode) + " " + username;
+std::string encodeLogin(const std::string& username, const std::string& password) {
+    return "LOGIN " + username + " " + password;
+}
+
+std::string encodeLoginOk(int rating) {
+    return "LOGIN_OK " + std::to_string(rating);
+}
+
+std::string encodeLoginFail(const std::string& reason) {
+    return "LOGIN_FAIL " + reason;
+}
+
+std::string encodeJoin(JoinMode mode, const std::string& room) {
+    std::string out = std::string("JOIN ") + joinModeChar(mode);
     if (mode == JoinMode::JoinRoom) {
         out += " " + room;
     }
@@ -89,6 +101,22 @@ std::string encodeRoom(const std::string& key) {
 
 std::string encodePlayers(const std::string& white, const std::string& black) {
     return "PLAYERS " + white + " " + black;
+}
+
+std::string encodeNoOpponent() {
+    return "NO_OPPONENT";
+}
+
+std::string encodeForfeitWarning(PlayerColor disconnectedColor, int graceMs) {
+    return std::string("FORFEIT_WARNING ") + colorChar(disconnectedColor) + " " + std::to_string(graceMs);
+}
+
+std::string encodeForfeit(PlayerColor winner) {
+    return std::string("FORFEIT ") + colorChar(winner);
+}
+
+std::string encodeRatings(int whiteRating, int blackRating) {
+    return "RATINGS " + std::to_string(whiteRating) + " " + std::to_string(blackRating);
 }
 
 std::string encodeState(const std::vector<RenderPiece>& pieces) {
@@ -139,16 +167,28 @@ DecodedMessage decode(const std::string& text) {
     }
     const std::string& cmd = tokens[0];
 
-    if (cmd == "JOIN" && tokens.size() >= 3 && !tokens[1].empty()) {
+    if (cmd == "LOGIN" && tokens.size() >= 3) {
+        return LoginMessage{tokens[1], tokens[2]};
+    }
+
+    if (cmd == "LOGIN_OK" && tokens.size() >= 2) {
+        return LoginOkMessage{std::stoi(tokens[1])};
+    }
+
+    if (cmd == "LOGIN_FAIL" && tokens.size() >= 2) {
+        return LoginFailMessage{tokens[1]};
+    }
+
+    if (cmd == "JOIN" && tokens.size() >= 2 && !tokens[1].empty()) {
         const char modeChar = tokens[1][0];
         if (modeChar == 'R') {
-            if (tokens.size() < 4) {
+            if (tokens.size() < 3) {
                 return std::monostate{};
             }
-            return JoinMessage{tokens[2], JoinMode::JoinRoom, tokens[3]};
+            return JoinMessage{JoinMode::JoinRoom, tokens[2]};
         }
         const JoinMode mode = modeChar == 'C' ? JoinMode::CreateRoom : JoinMode::QuickMatch;
-        return JoinMessage{tokens[2], mode, ""};
+        return JoinMessage{mode, ""};
     }
 
     if (cmd == "CLICK" && tokens.size() >= 3) {
@@ -169,6 +209,22 @@ DecodedMessage decode(const std::string& text) {
 
     if (cmd == "PLAYERS" && tokens.size() >= 3) {
         return PlayersMessage{tokens[1], tokens[2]};
+    }
+
+    if (cmd == "NO_OPPONENT") {
+        return NoOpponentMessage{};
+    }
+
+    if (cmd == "FORFEIT_WARNING" && tokens.size() >= 3 && !tokens[1].empty()) {
+        return ForfeitWarningMessage{colorFromChar(tokens[1][0]), std::stoi(tokens[2])};
+    }
+
+    if (cmd == "FORFEIT" && tokens.size() >= 2 && !tokens[1].empty()) {
+        return ForfeitMessage{colorFromChar(tokens[1][0])};
+    }
+
+    if (cmd == "RATINGS" && tokens.size() >= 3) {
+        return RatingsMessage{std::stoi(tokens[1]), std::stoi(tokens[2])};
     }
 
     if (cmd == "STATE") {

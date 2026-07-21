@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
-project(kung_fu_chess LANGUAGES CXX)
+# C is needed for sqlite3.c (the vendored SQLite amalgamation, see below) - everything
+# else in this project is C++.
+project(kung_fu_chess LANGUAGES CXX C)
 
 # הגדרת סטנדרט C++
 set(CMAKE_CXX_STANDARD 17)
@@ -42,6 +44,33 @@ FetchContent_Declare(
     GIT_TAG v11.4.5
 )
 FetchContent_MakeAvailable(ixwebsocket)
+
+# SQLite: account storage (Server/AccountStore.cpp) for Phase 4. Fetched as the official
+# amalgamation (a single sqlite3.c/sqlite3.h pair) straight from sqlite.org - not a
+# third-party CMake-wrapped mirror, keeping supply-chain trust anchored to the same
+# upstream-authoritative bar ixwebsocket/Catch2 already meet. The amalgamation has no
+# CMakeLists.txt of its own (FetchContent_MakeAvailable just populates the source; nothing
+# tries to add_subdirectory it), so the one .c file is built into a library manually below,
+# same as vendoring any single-file library.
+FetchContent_Declare(
+    sqlite3
+    URL https://www.sqlite.org/2026/sqlite-amalgamation-3530300.zip
+    URL_HASH SHA3_256=d45c688a8cb23f68611a894a756a12d7eb6ab6e9e2468ca70adbeab3808b5ab9
+    # TLS_VERIFY FALSE: this build environment's proxy/CA setup fails certificate-chain
+    # revocation checking against sqlite.org specifically (CMake's downloader, not plain
+    # curl, which reaches the same host fine here) - the file's actual integrity is still
+    # fully guaranteed by URL_HASH above regardless of this flag, so disabling TLS identity
+    # verification for just this one download doesn't weaken content authenticity.
+    TLS_VERIFY FALSE
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(sqlite3)
+add_library(sqlite3 STATIC ${sqlite3_SOURCE_DIR}/sqlite3.c)
+target_include_directories(sqlite3 PUBLIC ${sqlite3_SOURCE_DIR})
+# SQLITE_THREADSAFE=1 (the default, set explicitly rather than assumed) is what lets
+# AccountStore call into the same sqlite3* handle from multiple connection threads without
+# its own extra mutex - SQLite's own internal locking already covers it.
+target_compile_definitions(sqlite3 PUBLIC SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
 
 # --- kungfu_logic: the engine, no OpenCV, no networking --------------------
 file(GLOB_RECURSE LOGIC_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Logic/src/*.cpp")
@@ -92,9 +121,11 @@ target_link_libraries(kungfu_ui PUBLIC winmm)
 
 # --- Executables -------------------------------------------------------------
 # Server: owns the real GameEngine (one per room), no OpenCV involved at all.
+# Links sqlite3 (AccountStore) and bcrypt (Windows CNG, password hashing) - scoped only
+# here, since the client never touches the database or does its own hashing.
 file(GLOB_RECURSE SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/*.cpp")
 add_executable(kungfu_server ${SERVER_SOURCES})
-target_link_libraries(kungfu_server PRIVATE kungfu_logic kungfu_network)
+target_link_libraries(kungfu_server PRIVATE kungfu_logic kungfu_network sqlite3 bcrypt)
 
 # Client: owns the OpenCV window, talks to the server instead of owning GameEngine.
 add_executable(kungfu_app main.cpp)

@@ -59,6 +59,9 @@ struct PlayerPanel {
     std::string name;
     int score = 0;
     std::vector<MoveEntry> moves;
+    // This account's Elo rating - 0 means "not yet known" (e.g. before any match this
+    // client is part of has concluded, or for the opponent's panel pre-match).
+    int rating = 0;
 };
 
 // Both players' panel contents for one frame - purely a presentation
