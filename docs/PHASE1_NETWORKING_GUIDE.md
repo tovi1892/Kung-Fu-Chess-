@@ -87,13 +87,14 @@ add_library(kungfu_ui STATIC ${UI_SOURCES})
 target_include_directories(kungfu_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/UI)
 target_link_libraries(kungfu_ui PUBLIC kungfu_logic kungfu_network)
 ```
-The old `UI/*.cpp` files, now their own library. It links `kungfu_network` — this is a
-detail worth remembering: `UI/NetClient/RemoteGameProxy.cpp` (section 5) physically lives
-inside `UI/`, so it gets swept into this library by the `GLOB_RECURSE`, and it needs
-`Network/WsClientTransport.hpp` to compile. That's the *only* reason `kungfu_ui` needs to
-know about networking at all — conceptually, "the renderer" and "the network client"
-are still two separate concerns; they just happen to be packaged in the same `.lib` file
-here for simplicity.
+The old `UI/*.cpp` files, now their own library. At this point in Phase 1 it also links
+`kungfu_network`, because `RemoteGameProxy.cpp` (section 5) physically lived inside
+`UI/NetClient/` and got swept into this library by the `GLOB_RECURSE`. *(Later update: this
+was always meant to be a "for now" arrangement, not a real dependency — "the renderer" and
+"the network client" are two separate concerns that only happened to share a `.lib` file
+here. `RemoteGameProxy` has since moved to its own top-level `Client/` module, and
+`kungfu_ui` no longer links `kungfu_network` at all — see `CLAUDE.md`'s current
+architecture section.)*
 
 ```cmake
 # --- Executables -------------------------------------------------------------
@@ -522,7 +523,7 @@ sent to both connections instead.
 
 ## 5. The client side
 
-### `UI/NetClient/RemoteGameProxy.hpp` / `.cpp` — a `GameEngine`-shaped stand-in
+### `RemoteGameProxy.hpp` / `.cpp` (originally `UI/NetClient/`, now `Client/`) — a `GameEngine`-shaped stand-in
 
 The design goal stated up front in the header comment: **mirror `GameEngine`'s public
 surface closely enough that `main.cpp`'s existing subscriber-wiring code barely
@@ -726,7 +727,7 @@ actually works.
 | `Network/WsServerTransport.hpp`/`.cpp` | new | Server-side WebSocket wrapper |
 | `Network/WsClientTransport.hpp`/`.cpp` | new | Client-side WebSocket wrapper |
 | `Server/main.cpp` | new | The `kungfu_server` executable |
-| `UI/NetClient/RemoteGameProxy.hpp`/`.cpp` | new | Client-side `GameEngine`-shaped stand-in |
+| `UI/NetClient/RemoteGameProxy.hpp`/`.cpp` (now `Client/`) | new | Client-side `GameEngine`-shaped stand-in |
 | `main.cpp` | changed | No longer owns game logic; talks to `RemoteGameProxy` instead |
 | `run.bat` | changed | Forwards an optional server-address argument |
 | `run_server.bat` | new | Launches the server (no OpenCV `PATH` needed) |

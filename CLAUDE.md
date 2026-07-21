@@ -132,8 +132,10 @@ The project is split into three layers with a strict dependency direction: `UI` 
     sequences from `UI/assets/pieces_classic/<Kind><Color>/states/<idle|move|jump|long_rest|short_rest>/`.
   - `Windows/` — `SoundPlayer`/`UsernamePrompt`, raw Win32 API wrappers (`PlaySoundW`/`CreateWindowExA`) with zero
     OpenCV dependency — the folder name itself flags that this won't compile on a non-Windows target without changes.
-  - `NetClient/` — `RemoteGameProxy`, the client-side, WebSocket-backed stand-in for a local `GameEngine` (talks to
-    `kungfu_server` — see `Server/` and `Network/`, which sit alongside `Logic/`/`UI/` at the repo root).
+- **`Client/`** — `RemoteGameProxy`, the client-side, WebSocket-backed stand-in for a local `GameEngine` (talks to
+  `kungfu_server` — see `Server/` and `Network/`, which sit alongside `Logic/`/`UI/`/`Client/` at the repo root).
+  Deliberately not under `UI/`: it depends only on `Logic/` + `Network/` (the `kungfu_client` library), no
+  OpenCV/Win32 at all, so `kungfu_ui` itself stays a pure OpenCV-rendering library with zero networking dependency.
 
 ### Non-obvious invariants
 

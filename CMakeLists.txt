@@ -62,16 +62,22 @@ target_include_directories(kungfu_network PUBLIC
 )
 target_link_libraries(kungfu_network PUBLIC kungfu_logic ixwebsocket ws2_32)
 
-# --- kungfu_ui: the OpenCV-backed view, depends on kungfu_logic + kungfu_network ----
-# (kungfu_network is needed here too because UI/NetClient/RemoteGameProxy.cpp - the
-# client-side WebSocket-backed stand-in for a local GameEngine - lives under UI/ as
-# well, and includes Network/WsClientTransport.hpp.)
+# --- kungfu_client: the client-side GameEngine stand-in over WebSocket -
+# depends on kungfu_logic + kungfu_network only, zero OpenCV/Win32.
+file(GLOB_RECURSE CLIENT_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Client/*.cpp")
+add_library(kungfu_client STATIC ${CLIENT_SOURCES})
+target_include_directories(kungfu_client PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(kungfu_client PUBLIC kungfu_logic kungfu_network)
+
+# --- kungfu_ui: the OpenCV-backed view, depends on kungfu_logic only ----
 file(GLOB_RECURSE UI_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/UI/*.cpp")
 add_library(kungfu_ui STATIC ${UI_SOURCES})
 target_include_directories(kungfu_ui PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/UI
 )
-target_link_libraries(kungfu_ui PUBLIC kungfu_logic kungfu_network)
+target_link_libraries(kungfu_ui PUBLIC kungfu_logic)
 
 if(TARGET OpenCV::opencv_core)
     target_link_libraries(kungfu_ui PUBLIC OpenCV::opencv_core OpenCV::imgproc OpenCV::highgui)
@@ -92,7 +98,7 @@ target_link_libraries(kungfu_server PRIVATE kungfu_logic kungfu_network)
 
 # Client: owns the OpenCV window, talks to the server instead of owning GameEngine.
 add_executable(kungfu_app main.cpp)
-target_link_libraries(kungfu_app PRIVATE kungfu_ui)
+target_link_libraries(kungfu_app PRIVATE kungfu_ui kungfu_client)
 
 # הגדרת טסטים (Integration)
 # Integration tests

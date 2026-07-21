@@ -9,8 +9,8 @@
 #include "model/Enums.hpp"
 #include "model/Position.hpp"
 
+#include "Client/RemoteGameProxy.hpp"
 #include "Geometry/CoordinateMapper.hpp"
-#include "NetClient/RemoteGameProxy.hpp"
 #include "OpenCV/OpenCvView.hpp"
 #include "Windows/SoundPlayer.hpp"
 #include "Windows/UsernamePrompt.hpp"

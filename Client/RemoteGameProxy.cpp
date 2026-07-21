@@ -17,37 +17,33 @@ void RemoteGameProxy::sendClick(int row, int col) {
 }
 
 void RemoteGameProxy::handleMessage(const std::string& text) {
-    const auto decoded = net::decode(text);
-
-    if (const auto* welcome = std::get_if<net::WelcomeMessage>(&decoded)) {
-        std::lock_guard<std::mutex> lock(sessionMutex_);
-        myColor_ = welcome->color;
-        hasColor_ = true;
-    } else if (std::get_if<net::SpectateMessage>(&decoded)) {
-        std::lock_guard<std::mutex> lock(sessionMutex_);
-        isSpectator_ = true;
-    } else if (const auto* room = std::get_if<net::RoomMessage>(&decoded)) {
-        std::lock_guard<std::mutex> lock(sessionMutex_);
-        roomKey_ = room->key;
-    } else if (const auto* players = std::get_if<net::PlayersMessage>(&decoded)) {
-        std::lock_guard<std::mutex> lock(playersMutex_);
-        players_ = KnownPlayers{players->white, players->black};
-    } else if (const auto* state = std::get_if<net::StateMessage>(&decoded)) {
-        std::lock_guard<std::mutex> lock(stateMutex_);
-        latestState_ = state->pieces;
-    } else if (const auto* move = std::get_if<MoveStarted>(&decoded)) {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        pendingEvents_.push_back(*move);
-    } else if (const auto* capture = std::get_if<PieceCaptured>(&decoded)) {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        pendingEvents_.push_back(*capture);
-    } else if (const auto* start = std::get_if<GameStarted>(&decoded)) {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        pendingEvents_.push_back(*start);
-    } else if (const auto* end = std::get_if<GameEnded>(&decoded)) {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        pendingEvents_.push_back(*end);
-    }
+    std::visit(
+        [this](const auto& msg) {
+            using T = std::decay_t<decltype(msg)>;
+            if constexpr (std::is_same_v<T, net::WelcomeMessage>) {
+                std::lock_guard<std::mutex> lock(sessionMutex_);
+                myColor_ = msg.color;
+                hasColor_ = true;
+            } else if constexpr (std::is_same_v<T, net::SpectateMessage>) {
+                std::lock_guard<std::mutex> lock(sessionMutex_);
+                isSpectator_ = true;
+            } else if constexpr (std::is_same_v<T, net::RoomMessage>) {
+                std::lock_guard<std::mutex> lock(sessionMutex_);
+                roomKey_ = msg.key;
+            } else if constexpr (std::is_same_v<T, net::PlayersMessage>) {
+                std::lock_guard<std::mutex> lock(playersMutex_);
+                players_ = KnownPlayers{msg.white, msg.black};
+            } else if constexpr (std::is_same_v<T, net::StateMessage>) {
+                std::lock_guard<std::mutex> lock(stateMutex_);
+                latestState_ = msg.pieces;
+            } else if constexpr (std::is_same_v<T, MoveStarted> || std::is_same_v<T, PieceCaptured> ||
+                                  std::is_same_v<T, GameStarted> || std::is_same_v<T, GameEnded>) {
+                std::lock_guard<std::mutex> lock(queueMutex_);
+                pendingEvents_.push_back(msg);
+            }
+ 
+        },
+        net::decode(text));
 }
 
 void RemoteGameProxy::pollEvents() {
