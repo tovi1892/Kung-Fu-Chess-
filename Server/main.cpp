@@ -51,6 +51,11 @@ int main() {
     std::optional<std::string> openQuickMatchKey;
     int nextQuickMatchId = 0;
 
+    // Next id handed to a Room -> Create - a plain incrementing counter (not
+    // generateRoomKey's random string) so it's short and easy to read aloud/type to a
+    // friend. Never repeats within the process's lifetime, so no uniqueness check needed.
+    int nextNamedRoomId = 0;
+
     WsServerTransport server(kPort);
 
     auto broadcastToRoom = [&server](const Room& room, const std::string& text) {
@@ -136,7 +141,7 @@ int main() {
                     }
                     break;
                 case JoinMode::CreateRoom:
-                    roomKey = generateRoomKey(rooms);
+                    roomKey = std::to_string(nextNamedRoomId++);
                     break;
                 case JoinMode::JoinRoom:
                     roomKey = join->room;

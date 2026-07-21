@@ -39,8 +39,4 @@ struct Room {
 // Builds a fresh Room with a new starting board/RuleEngine/GameEngine - no players yet.
 std::unique_ptr<Room> createRoom(const std::string& key);
 
-// A short random id not already present in `existing` (retries on the astronomically
-// rare collision) - used only for Create, where the client supplied no id of its own.
-std::string generateRoomKey(const std::unordered_map<std::string, std::unique_ptr<Room>>& existing);
-
 }  // namespace kungfu
