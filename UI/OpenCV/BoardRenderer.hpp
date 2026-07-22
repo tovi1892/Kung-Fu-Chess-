@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IGameView.hpp"
+#include "Img/Color.hpp"
 #include "Img/img.hpp"
 #include "AssetManager.hpp"
 #include "Geometry/CoordinateMapper.hpp"
@@ -21,7 +22,7 @@ namespace kungfu {
 void drawCheckerboardAndLabels(Img& target, const CoordinateMapper& mapper);
 
 // Draws a thin frame around one board cell - used for selection / last-move highlighting.
-void drawCellOutline(Img& frame, const CoordinateMapper& mapper, int row, int col, const cv::Scalar& color);
+void drawCellOutline(Img& frame, const CoordinateMapper& mapper, int row, int col, const Color& color);
 
 // A radial "charging up" meter for any piece-unavailable timer with a known
 // remaining/total duration (post-move cooldown or post-jump short rest): a

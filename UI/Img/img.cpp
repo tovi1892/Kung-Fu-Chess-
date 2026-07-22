@@ -4,6 +4,13 @@
 
 namespace {
 constexpr int kWaitKeyIndefinitely = 0;
+
+// The one place in this project that knows cv::Scalar's channel order is B,G,R,A, not
+// R,G,B,A - every drawing method below funnels its Color parameter through this right
+// before the actual OpenCV call, so the rest of the codebase never has to know.
+cv::Scalar toScalar(const Color& color) {
+    return cv::Scalar(color.b, color.g, color.r, color.a);
+}
 }  // namespace
 
 Img::Img() {}
@@ -37,34 +44,34 @@ Img& Img::read(const std::string& path,
     return *this;
 }
 
-Img& Img::create(int width, int height, const cv::Scalar& color) {
-    img = cv::Mat(height, width, CV_8UC3, color);
+Img& Img::create(int width, int height, const Color& color) {
+    img = cv::Mat(height, width, CV_8UC3, toScalar(color));
     return *this;
 }
 
-Img& Img::draw_rect(int x, int y, int w, int h, const cv::Scalar& color) {
+Img& Img::draw_rect(int x, int y, int w, int h, const Color& color) {
     if (img.empty()) {
         throw std::runtime_error("Image not loaded.");
     }
-    cv::rectangle(img, cv::Rect(x, y, w, h), color, cv::FILLED);
+    cv::rectangle(img, cv::Rect(x, y, w, h), toScalar(color), cv::FILLED);
     return *this;
 }
 
-Img& Img::draw_rect_outline(int x, int y, int w, int h, const cv::Scalar& color, int thickness) {
+Img& Img::draw_rect_outline(int x, int y, int w, int h, const Color& color, int thickness) {
     if (img.empty()) {
         throw std::runtime_error("Image not loaded.");
     }
-    cv::rectangle(img, cv::Rect(x, y, w, h), color, thickness);
+    cv::rectangle(img, cv::Rect(x, y, w, h), toScalar(color), thickness);
     return *this;
 }
 
 Img& Img::draw_arc(int centerX, int centerY, int radius, double startAngleDeg, double endAngleDeg,
-                    const cv::Scalar& color, int thickness) {
+                    const Color& color, int thickness) {
     if (img.empty()) {
         throw std::runtime_error("Image not loaded.");
     }
     cv::ellipse(img, cv::Point(centerX, centerY), cv::Size(radius, radius), 0.0,
-                startAngleDeg, endAngleDeg, color, thickness, cv::LINE_AA);
+                startAngleDeg, endAngleDeg, toScalar(color), thickness, cv::LINE_AA);
     return *this;
 }
 
@@ -152,14 +159,14 @@ void Img::draw_on(Img& other_img, int x, int y) const {
 }
 
 void Img::put_text(const std::string& txt, int x, int y, double font_size,
-                   const cv::Scalar& color, int thickness) {
+                   const Color& color, int thickness) {
     if (img.empty()) {
         throw std::runtime_error("Image not loaded.");
     }
-    
+
     cv::putText(img, txt, cv::Point(x, y),
                 cv::FONT_HERSHEY_SIMPLEX, font_size,
-                color, thickness, cv::LINE_AA);
+                toScalar(color), thickness, cv::LINE_AA);
 }
 
 int Img::text_width(const std::string& txt, double font_size, int thickness) const {

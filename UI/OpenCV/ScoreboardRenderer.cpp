@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <sstream>
 
+#include "Img/Color.hpp"
 #include "RenderConfig.hpp"
 
 namespace kungfu {
@@ -31,11 +32,11 @@ std::string formatElapsed(double elapsedMs) {
 }  // namespace
 
 void drawPlayerPanel(Img& frame, const PlayerPanel& panel, int panelX, int panelWidth, int panelHeight) {
-    static const cv::Scalar kNameColor(60, 200, 230);
-    static const cv::Scalar kScoreColor(190, 190, 190);
-    static const cv::Scalar kHeaderColor(225, 225, 225);
-    static const cv::Scalar kMoveColor(205, 205, 205);
-    static const cv::Scalar kDividerColor(90, 90, 90);
+    static constexpr Color kNameColor{230, 200, 60};
+    static constexpr Color kScoreColor{190, 190, 190};
+    static constexpr Color kHeaderColor{225, 225, 225};
+    static constexpr Color kMoveColor{205, 205, 205};
+    static constexpr Color kDividerColor{90, 90, 90};
 
     auto centeredX = [&](const std::string& text, double fontSize, int thickness) {
         const int textWidth = frame.text_width(text, fontSize, thickness);
@@ -91,7 +92,7 @@ void drawRoomLabel(Img& frame, const std::string& roomLabel, int windowWidth) {
     if (roomLabel.empty()) {
         return;
     }
-    static const cv::Scalar kRoomLabelColor(190, 190, 190);
+    static constexpr Color kRoomLabelColor{190, 190, 190};
     const int textWidth = frame.text_width(roomLabel, RenderConfig::kRoomLabelFontSize, RenderConfig::kRoomLabelTextThickness);
     const int x = std::max(0, (windowWidth - textWidth) / 2);
     frame.put_text(roomLabel, x, RenderConfig::kRoomLabelYPx, RenderConfig::kRoomLabelFontSize, kRoomLabelColor,

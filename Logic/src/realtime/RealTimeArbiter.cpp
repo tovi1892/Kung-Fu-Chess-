@@ -269,6 +269,7 @@ bool RealTimeArbiter::resolveStepMove(PendingMove& pm, Piece* currentPiece) {
                 // the two started moving first. The winner stops right here
                 // rather than continuing toward its own original target.
                 target->setState(PieceState::Captured);
+                const bool capturedKing = (target->type() == PieceType::King);
                 recordCapture(currentPiece->color(), target->type(), nextPos);
                 board_->removePiece(nextPos);
                 otherPm->active = false;
@@ -276,6 +277,17 @@ bool RealTimeArbiter::resolveStepMove(PendingMove& pm, Piece* currentPiece) {
                 board_->movePiece(pm.currentPos, nextPos);
                 pm.currentPos = nextPos;
                 capturedThisStep = true;
+
+                // Same short-circuit every other capture branch in this file already
+                // does: without it, advanceTime keeps processing the rest of this
+                // ms-sized batch (and kingCaptured_ never gets set), so a second piece
+                // resolving later in the same tick/batch can trigger a second, spurious
+                // GameEnded for a game that already ended right here.
+                if (capturedKing) {
+                    kingCaptured_ = true;
+                    pm.active = false;
+                    return true;
+                }
             }
         } else {
             // The piece at the target square isn't itself moving.

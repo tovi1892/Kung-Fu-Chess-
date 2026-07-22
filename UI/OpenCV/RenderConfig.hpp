@@ -3,7 +3,7 @@
 namespace kungfu {
 
 // Visual/geometric tuning constants specific to the OpenCV-backed UI - pixel offsets,
-// font scale, line thickness, sizes. Colors stay local `static const cv::Scalar`s next
+// font scale, line thickness, sizes. Colors stay local `static constexpr Color`s next
 // to the function that draws with them (see BoardRenderer.cpp/ScoreboardRenderer.cpp) -
 // this file is only for the numbers, not the colors.
 struct RenderConfig {

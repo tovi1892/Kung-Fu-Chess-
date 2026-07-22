@@ -4,6 +4,8 @@
 #include <string>
 #include <filesystem>
 
+#include "Color.hpp"
+
 // Default tuning values for Img's own methods below - kept local to this generic,
 // reusable OpenCV wrapper rather than depending on the chess-specific RenderConfig
 // (UI/OpenCV/RenderConfig.hpp), which BoardRenderer/ScoreboardRenderer/
@@ -13,12 +15,11 @@ constexpr int kImgDefaultOutlineThickness = 2;
 constexpr int kImgDefaultArcThickness = 3;
 constexpr int kImgDefaultTextThickness = 1;
 
-// cv::Scalar isn't a constexpr-friendly literal type, so these are `const`, matching
-// how BoardRenderer/ScoreboardRenderer already declare their own cv::Scalar constants.
-// Two separate constants even though both are white today - canvas fill and text color
-// are different concepts that only coincidentally share a value right now.
-const cv::Scalar kImgDefaultCanvasColor(255, 255, 255);
-const cv::Scalar kImgDefaultTextColor(255, 255, 255, 255);
+// Color (unlike cv::Scalar) is a plain-int aggregate, so these can finally be
+// constexpr. Two separate constants even though both are white today - canvas fill and
+// text color are different concepts that only coincidentally share a value right now.
+constexpr Color kImgDefaultCanvasColor{255, 255, 255};
+constexpr Color kImgDefaultTextColor{255, 255, 255, 255};
 
 // A thin wrapper around cv::Mat: the one class in this project allowed to
 // call OpenCV pixel-drawing functions directly. Every other UI class draws
@@ -58,19 +59,19 @@ public:
      * (BGR). Used to build a board rendered entirely from code instead of a
      * background image file.
      */
-    Img& create(int width, int height, const cv::Scalar& color = kImgDefaultCanvasColor);
+    Img& create(int width, int height, const Color& color = kImgDefaultCanvasColor);
 
     /**
      * Draw a filled rectangle directly onto this image.
      */
-    Img& draw_rect(int x, int y, int w, int h, const cv::Scalar& color);
+    Img& draw_rect(int x, int y, int w, int h, const Color& color);
 
     /**
      * Draw an unfilled rectangle outline (a thin frame) directly onto this
      * image - used for square highlights, where draw_rect's solid fill
      * would hide whatever is drawn on the square.
      */
-    Img& draw_rect_outline(int x, int y, int w, int h, const cv::Scalar& color, int thickness = kImgDefaultOutlineThickness);
+    Img& draw_rect_outline(int x, int y, int w, int h, const Color& color, int thickness = kImgDefaultOutlineThickness);
 
     /**
      * Draw a circular arc (a portion of a circle's outline) directly onto
@@ -79,7 +80,7 @@ public:
      * matching cv::ellipse's own convention (so -90 is 12 o'clock).
      */
     Img& draw_arc(int centerX, int centerY, int radius, double startAngleDeg, double endAngleDeg,
-                   const cv::Scalar& color, int thickness = kImgDefaultArcThickness);
+                   const Color& color, int thickness = kImgDefaultArcThickness);
 
     /**
      * Draw this image onto another image at position (x, y). If this image
@@ -101,11 +102,11 @@ public:
      * @param x X coordinate for text position
      * @param y Y coordinate for text position (baseline)
      * @param font_size Font scale factor
-     * @param color Text color (BGR or BGRA)
+     * @param color Text color
      * @param thickness Text thickness
      */
     void put_text(const std::string& txt, int x, int y, double font_size,
-                  const cv::Scalar& color = kImgDefaultTextColor,
+                  const Color& color = kImgDefaultTextColor,
                   int thickness = kImgDefaultTextThickness);
 
     /**

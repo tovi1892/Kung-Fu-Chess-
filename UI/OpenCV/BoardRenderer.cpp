@@ -12,8 +12,8 @@ void drawCheckerboardAndLabels(Img& target, const CoordinateMapper& mapper) {
     const int rows = mapper.rows();
     const int cols = mapper.cols();
 
-    static const cv::Scalar kLightSquare(181, 217, 240);
-    static const cv::Scalar kDarkSquare(99, 136, 181);
+    static constexpr Color kLightSquare{240, 217, 181};
+    static constexpr Color kDarkSquare{181, 136, 99};
     for (int r = 0; r < rows; ++r) {
         for (int c = 0; c < cols; ++c) {
             const bool isLight = (r + c) % 2 == 0;
@@ -26,7 +26,7 @@ void drawCheckerboardAndLabels(Img& target, const CoordinateMapper& mapper) {
     // Labels sit in the margin around the board, which may share a dark
     // panel background rather than the light checkered squares, so they
     // need a light color to stay readable either way.
-    static const cv::Scalar kLabelColor(215, 215, 215);
+    static constexpr Color kLabelColor{215, 215, 215};
     for (int c = 0; c < cols; ++c) {
         const std::string label(1, static_cast<char>('a' + c));
         const int x = mapper.cellTopLeftX(c) + mapper.cellWidth() / 2 + RenderConfig::kLabelHorizontalCenteringOffsetPx;
@@ -45,24 +45,24 @@ void drawCheckerboardAndLabels(Img& target, const CoordinateMapper& mapper) {
     }
 }
 
-void drawCellOutline(Img& frame, const CoordinateMapper& mapper, int row, int col, const cv::Scalar& color) {
+void drawCellOutline(Img& frame, const CoordinateMapper& mapper, int row, int col, const Color& color) {
     frame.draw_rect_outline(mapper.cellTopLeftX(col), mapper.cellTopLeftY(row),
                              mapper.cellWidth(), mapper.cellHeight(), color, RenderConfig::kHighlightOutlineThickness);
 }
 
 namespace {
-cv::Scalar lerpColor(const cv::Scalar& from, const cv::Scalar& to, double t) {
-    return cv::Scalar(from[0] + (to[0] - from[0]) * t,
-                       from[1] + (to[1] - from[1]) * t,
-                       from[2] + (to[2] - from[2]) * t);
+Color lerpColor(const Color& from, const Color& to, double t) {
+    return Color{static_cast<int>(from.r + (to.r - from.r) * t),
+                 static_cast<int>(from.g + (to.g - from.g) * t),
+                 static_cast<int>(from.b + (to.b - from.b) * t)};
 }
 }  // namespace
 
 void drawRestRing(Img& frame, const CoordinateMapper& mapper, int cellPx, int cellPy,
                    double remainingMs, double totalMs) {
-    static const cv::Scalar kTrackColor(70, 70, 70);
-    static const cv::Scalar kStartColor(20, 90, 170);    // rust - just landed, long wait ahead
-    static const cv::Scalar kReadyColor(40, 210, 255);   // gold - about to become selectable
+    static constexpr Color kTrackColor{70, 70, 70};
+    static constexpr Color kStartColor{170, 90, 20};    // rust - just landed, long wait ahead
+    static constexpr Color kReadyColor{255, 210, 40};   // gold - about to become selectable
 
     const double fraction = std::clamp(1.0 - (remainingMs / totalMs), 0.0, 1.0);
     const int radius = std::min(mapper.cellWidth(), mapper.cellHeight()) / 2 - RenderConfig::kRestRingInsetPx;
@@ -103,8 +103,8 @@ void drawPiece(Img& frame, const RenderPiece& rp, AssetManager& assets, PieceAni
 }
 
 void drawBanner(Img& frame, const CoordinateMapper& mapper, const std::string& text) {
-    static const cv::Scalar kBackdrop(20, 20, 20);
-    static const cv::Scalar kTextColor(235, 235, 235);
+    static constexpr Color kBackdrop{20, 20, 20};
+    static constexpr Color kTextColor{235, 235, 235};
 
     const double fontSize = RenderConfig::kBannerFontSize;
     const int thickness = RenderConfig::kBannerTextThickness;

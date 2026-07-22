@@ -1,6 +1,7 @@
 #include "OpenCvView.hpp"
 
 #include "BoardRenderer.hpp"
+#include "Img/Color.hpp"
 #include "ScoreboardRenderer.hpp"
 #include "model/GameConfig.hpp"
 
@@ -27,12 +28,12 @@ void OpenCvView::init() {
 }
 
 void OpenCvView::drawStaticBackground() {
-    static const cv::Scalar kPanelBg(20, 20, 20);
+    static constexpr Color kPanelBg{20, 20, 20};
     boardImg_.create(width_, height_, kPanelBg);
 
     drawCheckerboardAndLabels(boardImg_, mapper_);
 
-    static const cv::Scalar kDividerColor(75, 75, 75);
+    static constexpr Color kDividerColor{75, 75, 75};
     boardImg_.draw_rect(sidePanelWidth_ - RenderConfig::kDividerThicknessPx, 0, RenderConfig::kDividerThicknessPx,
                          height_, kDividerColor);
     boardImg_.draw_rect(sidePanelWidth_ + boardSize_, 0, RenderConfig::kDividerThicknessPx, height_, kDividerColor);
@@ -46,8 +47,8 @@ void OpenCvView::render(const std::vector<RenderPiece>& pieces, const BoardHighl
     drawPlayerPanel(frame, scoreboard.black, 0, sidePanelWidth_, height_);
     drawPlayerPanel(frame, scoreboard.white, sidePanelWidth_ + boardSize_, sidePanelWidth_, height_);
 
-    static const cv::Scalar kSelectionColor(255, 255, 255);   // white - the square currently selected
-    static const cv::Scalar kLastMoveColor(80, 220, 80);      // green - the last move's from/to squares
+    static constexpr Color kSelectionColor{255, 255, 255};   // white - the square currently selected
+    static constexpr Color kLastMoveColor{80, 220, 80};      // green - the last move's from/to squares
 
     if (highlight.hasSelection) {
         drawCellOutline(frame, mapper_, highlight.selectedRow, highlight.selectedCol, kSelectionColor);

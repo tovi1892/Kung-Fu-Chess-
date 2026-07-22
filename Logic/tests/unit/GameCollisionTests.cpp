@@ -188,4 +188,53 @@ TEST_CASE("Real-Time Collision Rules", "[collision][realtime]") {
         CHECK(result.is_accepted == false);
         CHECK(result.reason == "friendly_destination");
     }
+
+    SECTION("Capturing a King via a dynamic mid-flight race ends the game exactly once, immediately") {
+        // The "two enemy pieces converging mid-flight" branch above (otherPm != nullptr)
+        // used to skip the capturedKing check every *other* capture branch in
+        // RealTimeArbiter already has - it recorded the capture (which correctly ends the
+        // game via GameEngine's own captureBus_ subscriber) but never set kingCaptured_ or
+        // returned true, so advanceTime kept silently resolving the rest of this wait()
+        // call's tick budget as if the game were still running. Real matches hit this via
+        // completely unrelated pieces still in flight resolving moments later - this test
+        // proves it directly with a bystander move that must NOT complete once the fix is
+        // in place.
+        auto board = emptyBoard();
+        board->placePiece(std::make_unique<King>(PlayerColor::White, Position(0, 0)), Position(0, 0));
+        board->placePiece(std::make_unique<King>(PlayerColor::Black, Position(7, 7)), Position(7, 7));
+        board->placePiece(std::make_unique<Rook>(PlayerColor::Black, Position(0, 4)), Position(0, 4));
+        board->placePiece(std::make_unique<Rook>(PlayerColor::White, Position(3, 0)), Position(3, 0));
+
+        GameEngine game(board);
+        game.start();
+
+        int gameEndedCount = 0;
+        game.onGameEnded().subscribe([&](const GameEnded&) { ++gameEndedCount; });
+
+        // Black rook starts its 4-square slide toward the White king's square...
+        REQUIRE(game.requestMove(Position(0, 4), Position(0, 0)).is_accepted);
+        game.wait(4 * GameConfig::kMsPerCell - GameConfig::kMsPerCell / 2);  // within half a cell of arriving
+
+        // ...then the White king moves away to a different empty square (not the rook's
+        // own path), so the king's transit window overlaps the rook's arrival tick: the
+        // rook's step finds the king's *own* pending move still active and sitting on
+        // (0,0) (Board itself hasn't moved the king yet) - exactly the dynamic-race
+        // condition, with the king on the losing end of it this time.
+        REQUIRE(game.requestMove(Position(0, 0), Position(1, 0)).is_accepted);
+
+        // A bystander, unrelated move timed to land in this same wait() call, just after
+        // the capture tick - the only way this could complete is if advanceTime kept
+        // resolving moves after the game had already ended.
+        REQUIRE(game.requestMove(Position(3, 0), Position(3, 1)).is_accepted);
+
+        game.wait(GameConfig::kMsPerCell);  // covers the capture tick and then some
+
+        CHECK(game.isFinished());
+        CHECK_FALSE(game.isRunning());
+        CHECK(gameEndedCount == 1);
+
+        auto bystander = board->pieceAt(Position(3, 0));
+        REQUIRE(bystander.has_value());
+        CHECK((*bystander)->state() == PieceState::Moving);
+    }
 }
