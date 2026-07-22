@@ -9,7 +9,8 @@
 // Default tuning values for Img's own methods below - kept local to this generic,
 // reusable OpenCV wrapper rather than depending on the chess-specific RenderConfig
 // (UI/OpenCV/RenderConfig.hpp), which BoardRenderer/ScoreboardRenderer/
-// UsernamePrompt pull their own values from at their own call sites instead.
+// LoginScreen/RoomChoiceScreen/PlayConfirmScreen pull their own values from at their own
+// call sites instead.
 constexpr int kImgDefaultNearWhiteThreshold = 240;
 constexpr int kImgDefaultOutlineThickness = 2;
 constexpr int kImgDefaultArcThickness = 3;

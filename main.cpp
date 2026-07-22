@@ -13,8 +13,10 @@
 #include "Geometry/CoordinateMapper.hpp"
 #include "Network/Logger.hpp"
 #include "OpenCV/OpenCvView.hpp"
+#include "Windows/LoginScreen.hpp"
+#include "Windows/PlayConfirmScreen.hpp"
+#include "Windows/RoomChoiceScreen.hpp"
 #include "Windows/SoundPlayer.hpp"
-#include "Windows/UsernamePrompt.hpp"
 #include "IInputHandler.hpp"
 
 using namespace kungfu;
@@ -84,13 +86,13 @@ PlayerPanel& panelFor(Scoreboard& scoreboard, PlayerColor color) {
     return color == PlayerColor::White ? scoreboard.white : scoreboard.black;
 }
 
-// UsernamePrompt stays Network-agnostic (see UI/Windows/UsernamePrompt.hpp), so this is
+// RoomChoiceScreen stays Network-agnostic (see UI/Windows/RoomChoiceScreen.hpp), so this is
 // the one place that maps its UI-facing outcome onto the wire protocol's JoinMode.
-net::JoinMode toJoinMode(JoinInfo::Mode mode) {
+net::JoinMode toJoinMode(RoomChoice::Mode mode) {
     switch (mode) {
-        case JoinInfo::Mode::CreateRoom: return net::JoinMode::CreateRoom;
-        case JoinInfo::Mode::JoinRoom:   return net::JoinMode::JoinRoom;
-        default:                        return net::JoinMode::QuickMatch;
+        case RoomChoice::Mode::CreateRoom: return net::JoinMode::CreateRoom;
+        case RoomChoice::Mode::JoinRoom:   return net::JoinMode::JoinRoom;
+        default:                          return net::JoinMode::QuickMatch;
     }
 }
 
@@ -102,23 +104,29 @@ int main(int argc, char** argv) {
     const std::string host = argc >= 2 ? argv[1] : "127.0.0.1";
     const std::string serverUrl = "ws://" + host + ":7777";
 
-    // Username/password/mode -> LOGIN -> JOIN is a retry loop: a wrong password or a
-    // quick-match search timing out both return the player to the same window (with an
-    // explanatory message) rather than the app just exiting or hanging.
-    std::optional<RemoteGameProxy> proxyOpt;  // constructed fresh each retry; never moved,
-                                               // since its internal callbacks capture `this`
+    // LoginScreen -> LOGIN -> RoomChoiceScreen -> PlayConfirmScreen -> JOIN. Two nested
+    // retry loops: the outer one re-shows LoginScreen (a wrong password, or an explicit Log
+    // Out from the room-choice screen); the inner one re-shows RoomChoiceScreen alone (a
+    // quick-match search timing out, or a Back from PlayConfirmScreen, returns to choosing
+    // a mode again, without forcing a fresh login on an already-authenticated connection).
+    std::optional<RemoteGameProxy> proxyOpt;  // constructed fresh each login retry; never
+                                               // moved, since its internal callbacks capture `this`
     std::string errorMessage;
-    std::optional<JoinInfo> join;
+    std::string lastUsername;  // re-offered as a prefill on retry - only the password was
+                                // ever wrong, no reason to make the player retype this too
 
     while (true) {
-        join = UsernamePrompt::show(errorMessage);
-        if (!join.has_value()) {
+        const auto credentials = LoginScreen::show(errorMessage, lastUsername);
+        if (!credentials.has_value()) {
             logger.log("No username entered - exiting.");
             return 0;
         }
+        const auto& [username, password] = *credentials;
+        lastUsername = username;
+        errorMessage.clear();  // consumed - don't re-show a stale error past this point
 
-        logger.log("Connecting to " + serverUrl + " as \"" + join->username + "\" ...");
-        proxyOpt.emplace(serverUrl, join->username, join->password, toJoinMode(join->mode), join->room);
+        logger.log("Connecting to " + serverUrl + " as \"" + username + "\" ...");
+        proxyOpt.emplace(serverUrl, username, password);
         RemoteGameProxy& loginAttempt = *proxyOpt;
 
         while (!loginAttempt.loginResolved()) {
@@ -129,18 +137,81 @@ int main(int argc, char** argv) {
             logger.log(errorMessage);
             continue;
         }
-        logger.log(join->username + " logged in (rating " + std::to_string(loginAttempt.myRating()) + ")");
+        logger.log(username + " logged in (rating " + std::to_string(loginAttempt.myRating()) + ")");
+        LoginScreen::showResult(username, loginAttempt.myRating(), loginAttempt.accountWasCreated());
 
-        while (!loginAttempt.hasRole() && !loginAttempt.searchFailed()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-        if (loginAttempt.searchFailed()) {
-            errorMessage = "No opponent found within range - try again";
-            logger.log(errorMessage);
-            continue;
+        const std::string welcomeText =
+            "Signed in as " + username + " (rating " + std::to_string(loginAttempt.myRating()) + ")";
+
+        bool loggedOut = false;
+        bool matched = false;
+        while (true) {
+            const auto roomResult = RoomChoiceScreen::show(welcomeText);
+            if (roomResult.outcome == RoomChoiceScreen::Outcome::Cancelled) {
+                logger.log("Room choice cancelled - exiting.");
+                return 0;
+            }
+            if (roomResult.outcome == RoomChoiceScreen::Outcome::LogOut) {
+                logger.log(username + " logged out");
+                lastUsername.clear();
+                loggedOut = true;
+                break;
+            }
+
+            // Screen C: Play is what actually sends JOIN and waits for the server - not
+            // RoomChoiceScreen's own Next. PlayConfirmScreen has no knowledge of
+            // RemoteGameProxy itself (stays Network-agnostic like the other two screens),
+            // so onPlay/pollJoin are the hooks that let main.cpp drive the actual network
+            // side while PlayConfirmScreen just keeps its own window responsive and shows
+            // a "Connecting..."/"Searching for opponent..." state meanwhile.
+            std::chrono::steady_clock::time_point joinStartTime;
+            const auto onPlay = [&]() {
+                joinStartTime = std::chrono::steady_clock::now();
+                loginAttempt.join(toJoinMode(roomResult.choice.mode), roomResult.choice.room);
+            };
+            const auto pollJoin = [&](std::string& failureText) -> PlayConfirmScreen::JoinStatus {
+                if (loginAttempt.hasRole()) {
+                    return PlayConfirmScreen::JoinStatus::Succeeded;
+                }
+                if (loginAttempt.searchFailed()) {
+                    failureText = "No opponent found within range - try again";
+                    logger.log(failureText);
+                    return PlayConfirmScreen::JoinStatus::Failed;
+                }
+                // Quick match already has its own server-side ~60s timeout (NO_OPPONENT);
+                // Create/Join have no failure path today other than a dropped connection,
+                // so this is purely a defensive client-side timeout for that case (see the
+                // Login/Room/Play plan's orphaned-room investigation).
+                if (roomResult.choice.mode != RoomChoice::Mode::QuickMatch) {
+                    const auto elapsed = std::chrono::steady_clock::now() - joinStartTime;
+                    if (elapsed > std::chrono::seconds(15)) {
+                        failureText = "Connection problem - try again";
+                        logger.log(failureText);
+                        return PlayConfirmScreen::JoinStatus::Failed;
+                    }
+                }
+                return PlayConfirmScreen::JoinStatus::Pending;
+            };
+
+            const auto confirmOutcome = PlayConfirmScreen::show(roomResult.choice, onPlay, pollJoin);
+            if (confirmOutcome == PlayConfirmScreen::Outcome::Cancelled) {
+                logger.log("Play confirmation cancelled - exiting.");
+                return 0;
+            }
+            if (confirmOutcome == PlayConfirmScreen::Outcome::Back) {
+                continue;  // back to RoomChoiceScreen, same authenticated connection
+            }
+
+            matched = true;
+            break;
         }
 
-        break;
+        if (loggedOut) {
+            continue;  // back to LoginScreen, next iteration destroys this connection first
+        }
+        if (matched) {
+            break;
+        }
     }
 
     RemoteGameProxy& proxy = *proxyOpt;

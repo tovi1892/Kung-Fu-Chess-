@@ -67,8 +67,8 @@ std::string encodeLogin(const std::string& username, const std::string& password
     return "LOGIN " + username + " " + password;
 }
 
-std::string encodeLoginOk(int rating) {
-    return "LOGIN_OK " + std::to_string(rating);
+std::string encodeLoginOk(int rating, bool accountCreated) {
+    return "LOGIN_OK " + std::to_string(rating) + " " + (accountCreated ? "1" : "0");
 }
 
 std::string encodeLoginFail(const std::string& reason) {
@@ -113,6 +113,10 @@ std::string encodeForfeitWarning(PlayerColor disconnectedColor, int graceMs) {
 
 std::string encodeForfeit(PlayerColor winner) {
     return std::string("FORFEIT ") + colorChar(winner);
+}
+
+std::string encodeReconnected(PlayerColor color) {
+    return std::string("RECONNECTED ") + colorChar(color);
 }
 
 std::string encodeRatings(int whiteRating, int blackRating) {
@@ -171,8 +175,8 @@ DecodedMessage decode(const std::string& text) {
         return LoginMessage{tokens[1], tokens[2]};
     }
 
-    if (cmd == "LOGIN_OK" && tokens.size() >= 2) {
-        return LoginOkMessage{std::stoi(tokens[1])};
+    if (cmd == "LOGIN_OK" && tokens.size() >= 3) {
+        return LoginOkMessage{std::stoi(tokens[1]), tokens[2] == "1"};
     }
 
     if (cmd == "LOGIN_FAIL" && tokens.size() >= 2) {
@@ -221,6 +225,10 @@ DecodedMessage decode(const std::string& text) {
 
     if (cmd == "FORFEIT" && tokens.size() >= 2 && !tokens[1].empty()) {
         return ForfeitMessage{colorFromChar(tokens[1][0])};
+    }
+
+    if (cmd == "RECONNECTED" && tokens.size() >= 2 && !tokens[1].empty()) {
+        return ReconnectedMessage{colorFromChar(tokens[1][0])};
     }
 
     if (cmd == "RATINGS" && tokens.size() >= 3) {

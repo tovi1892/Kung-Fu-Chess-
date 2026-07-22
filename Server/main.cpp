@@ -228,8 +228,9 @@ int main() {
                 if (result.success) {
                     pendingConnections.erase(id);
                     authenticatedConnections[id] = AuthenticatedSession{login->username, result.rating};
-                    queueSend(id, encodeLoginOk(result.rating));
-                    logger.log(login->username + " logged in (rating " + std::to_string(result.rating) + ")");
+                    queueSend(id, encodeLoginOk(result.rating, result.accountCreated));
+                    logger.log(login->username + (result.accountCreated ? " registered and logged in (rating " : " logged in (rating ") +
+                               std::to_string(result.rating) + ")");
                 } else {
                     queueSend(id, encodeLoginFail(result.failureReason));
                     logger.log("login failed for \"" + login->username + "\": " + result.failureReason);

@@ -57,10 +57,16 @@ struct ForfeitWarning {
 class RemoteGameProxy {
 public:
     // Sends `LOGIN <username> <password>` the instant the connection opens - see
-    // WsClientTransport's onOpen. `JOIN <mode> [room]` is sent only after LOGIN_OK
-    // arrives; mode/room are stored and replayed at that point.
-    RemoteGameProxy(const std::string& serverUrl, const std::string& username, const std::string& password,
-                     net::JoinMode mode, const std::string& room);
+    // WsClientTransport's onOpen. Does NOT send JOIN itself - the caller decides when a
+    // room/match choice is actually confirmed (see join() below) and this connection stays
+    // authenticated-but-unrouted until then.
+    RemoteGameProxy(const std::string& serverUrl, const std::string& username, const std::string& password);
+
+    // Sends `JOIN <mode> [room]` - only meaningful once loginResolved() && !loginFailed().
+    // Resets the previous attempt's role/room/search-failure state first, so this can be
+    // called again (e.g. after a quick-match NO_OPPONENT) on the same still-authenticated
+    // connection without hasRole()/searchFailed() reporting stale results from the last try.
+    void join(net::JoinMode mode, const std::string& room);
 
     void sendClick(int row, int col);
 
@@ -76,6 +82,9 @@ public:
     bool loginFailed() const;
     std::string loginFailureReason() const;
     int myRating() const;       // this account's own rating - known as soon as LOGIN_OK arrives
+    // True if this LOGIN just auto-registered a brand-new account rather than signing into
+    // an existing one - only meaningful once loginResolved() && !loginFailed().
+    bool accountWasCreated() const;
     KnownRatings ratings() const;  // both sides' post-match ratings - known once RATINGS arrives
 
     // True once the server has told this connection its role - either a color (a
@@ -103,6 +112,10 @@ public:
     // A forfeit-resolved win - handled like onGameEnded() for banner/sound purposes, just
     // with different text (see main.cpp) since it wasn't a real king capture.
     EventBus<net::ForfeitMessage>& onForfeit() { return forfeitBus_; }
+    // A disconnected player reconnected before their forfeit grace period elapsed -
+    // forfeitWarning() is already cleared by the time this fires (see handleMessage); this
+    // is just the one-shot notification for a banner (see main.cpp).
+    EventBus<net::ReconnectedMessage>& onReconnected() { return reconnectedBus_; }
 
 private:
     void handleMessage(const std::string& text);  // runs on the network thread
@@ -110,19 +123,15 @@ private:
     std::string username_;
     net::WsClientTransport transport_;
 
-    // What to JOIN with once LOGIN_OK arrives - set once in the constructor's onOpen
-    // callback, read once in handleMessage's LoginOkMessage branch, both on the network
-    // thread only (never touched from the main thread), so no mutex is needed for these.
-    net::JoinMode pendingJoinMode_ = net::JoinMode::QuickMatch;
-    std::string pendingJoinRoom_;
-
     EventBus<MoveStarted> moveBus_;
     EventBus<PieceCaptured> captureBus_;
     EventBus<GameStarted> startBus_;
     EventBus<GameEnded> endBus_;
     EventBus<net::ForfeitMessage> forfeitBus_;
+    EventBus<net::ReconnectedMessage> reconnectedBus_;
 
-    using QueuedEvent = std::variant<MoveStarted, PieceCaptured, GameStarted, GameEnded, net::ForfeitMessage>;
+    using QueuedEvent =
+        std::variant<MoveStarted, PieceCaptured, GameStarted, GameEnded, net::ForfeitMessage, net::ReconnectedMessage>;
     mutable std::mutex queueMutex_;
     std::vector<QueuedEvent> pendingEvents_;
 
@@ -139,6 +148,7 @@ private:
     bool loginFailed_ = false;
     std::string loginFailureReason_;
     int rating_ = 0;
+    bool accountCreated_ = false;
     KnownRatings ratings_;
     PlayerColor myColor_ = PlayerColor::White;
     bool hasColor_ = false;

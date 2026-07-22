@@ -16,8 +16,8 @@ namespace kungfu::net {
 // (MoveStarted/PieceCaptured/GameStarted/GameEnded) directly as the decoded payload
 // shape - there's no separate "network event" hierarchy to keep in sync with them.
 
-// How a connection wants to be placed into a match, chosen by which button/popup outcome
-// the player picked in UsernamePrompt (Play, Room->Create, Room->Join).
+// How a connection wants to be placed into a match, chosen by which option the player
+// picked on RoomChoiceScreen (Quick Match, Create Room, Join Room).
 enum class JoinMode {
     QuickMatch,
     CreateRoom,
@@ -35,6 +35,8 @@ struct LoginMessage {
 // Server -> client, sent once right after a connection's LOGIN succeeds.
 struct LoginOkMessage {
     int rating;
+    bool accountCreated;  // true if this LOGIN just auto-registered a brand-new username,
+                           // false if it signed into an existing one
 };
 
 // Server -> client, sent once right after a connection's LOGIN fails (e.g. wrong password
@@ -69,6 +71,16 @@ struct ForfeitWarningMessage {
 // separate concept from GameEnded (which only ever means "a king was captured").
 struct ForfeitMessage {
     PlayerColor winner;
+};
+
+// Server -> client, broadcast to a room the instant a disconnected player reconnects
+// (recognized by matching their newly-authenticated username against the room's pending
+// forfeit, not by any client-held token - see Server/main.cpp) before the forfeit grace
+// period elapsed. Lets the remaining occupants' clients cancel their own
+// ForfeitWarning/countdown display immediately, rather than it just sitting there until the
+// now-irrelevant deadline stops mattering.
+struct ReconnectedMessage {
+    PlayerColor color;
 };
 
 // Server -> client, broadcast right after GAME_END or FORFEIT - both players' post-match
@@ -114,11 +126,11 @@ struct StateMessage {
 using DecodedMessage = std::variant<std::monostate, LoginMessage, LoginOkMessage, LoginFailMessage,
                                      JoinMessage, ClickMessage, WelcomeMessage, SpectateMessage,
                                      RoomMessage, PlayersMessage, StateMessage, NoOpponentMessage,
-                                     ForfeitWarningMessage, ForfeitMessage, RatingsMessage,
+                                     ForfeitWarningMessage, ForfeitMessage, ReconnectedMessage, RatingsMessage,
                                      MoveStarted, PieceCaptured, GameStarted, GameEnded>;
 
 std::string encodeLogin(const std::string& username, const std::string& password);
-std::string encodeLoginOk(int rating);
+std::string encodeLoginOk(int rating, bool accountCreated);
 std::string encodeLoginFail(const std::string& reason);
 std::string encodeJoin(JoinMode mode, const std::string& room = "");
 std::string encodeClick(int row, int col);
@@ -130,6 +142,7 @@ std::string encodeState(const std::vector<RenderPiece>& pieces);
 std::string encodeNoOpponent();
 std::string encodeForfeitWarning(PlayerColor disconnectedColor, int graceMs);
 std::string encodeForfeit(PlayerColor winner);
+std::string encodeReconnected(PlayerColor color);
 std::string encodeRatings(int whiteRating, int blackRating);
 std::string encodeMoveStarted(const MoveStarted& event);
 std::string encodePieceCaptured(const PieceCaptured& event);

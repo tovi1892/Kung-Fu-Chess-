@@ -4,16 +4,22 @@
 
 namespace kungfu {
 
-RemoteGameProxy::RemoteGameProxy(const std::string& serverUrl, const std::string& username, const std::string& password,
-                                  net::JoinMode mode, const std::string& room)
+RemoteGameProxy::RemoteGameProxy(const std::string& serverUrl, const std::string& username, const std::string& password)
     : username_(username), transport_(serverUrl) {
     transport_.onMessage([this](const std::string& text) { handleMessage(text); });
-    transport_.onOpen([this, username, password, mode, room]() {
-        pendingJoinMode_ = mode;
-        pendingJoinRoom_ = room;
-        transport_.send(net::encodeLogin(username, password));
-    });
+    transport_.onOpen([this, username, password]() { transport_.send(net::encodeLogin(username, password)); });
     transport_.start();
+}
+
+void RemoteGameProxy::join(net::JoinMode mode, const std::string& room) {
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex_);
+        hasColor_ = false;
+        isSpectator_ = false;
+        searchFailed_ = false;
+        roomKey_.reset();
+    }
+    transport_.send(net::encodeJoin(mode, room));
 }
 
 void RemoteGameProxy::sendClick(int row, int col) {
@@ -25,12 +31,10 @@ void RemoteGameProxy::handleMessage(const std::string& text) {
         [this](const auto& msg) {
             using T = std::decay_t<decltype(msg)>;
             if constexpr (std::is_same_v<T, net::LoginOkMessage>) {
-                {
-                    std::lock_guard<std::mutex> lock(sessionMutex_);
-                    loginResolved_ = true;
-                    rating_ = msg.rating;
-                }
-                transport_.send(net::encodeJoin(pendingJoinMode_, pendingJoinRoom_));
+                std::lock_guard<std::mutex> lock(sessionMutex_);
+                loginResolved_ = true;
+                rating_ = msg.rating;
+                accountCreated_ = msg.accountCreated;
             } else if constexpr (std::is_same_v<T, net::LoginFailMessage>) {
                 std::lock_guard<std::mutex> lock(sessionMutex_);
                 loginResolved_ = true;
@@ -73,6 +77,13 @@ void RemoteGameProxy::handleMessage(const std::string& text) {
                 }
                 std::lock_guard<std::mutex> lock(queueMutex_);
                 pendingEvents_.push_back(msg);
+            } else if constexpr (std::is_same_v<T, net::ReconnectedMessage>) {
+                {
+                    std::lock_guard<std::mutex> lock(sessionMutex_);
+                    forfeitWarning_.reset();
+                }
+                std::lock_guard<std::mutex> lock(queueMutex_);
+                pendingEvents_.push_back(msg);
             } else if constexpr (std::is_same_v<T, MoveStarted> || std::is_same_v<T, PieceCaptured> ||
                                   std::is_same_v<T, GameStarted> || std::is_same_v<T, GameEnded>) {
                 std::lock_guard<std::mutex> lock(queueMutex_);
@@ -103,6 +114,8 @@ void RemoteGameProxy::pollEvents() {
                     endBus_.publish(e);
                 } else if constexpr (std::is_same_v<T, net::ForfeitMessage>) {
                     forfeitBus_.publish(e);
+                } else if constexpr (std::is_same_v<T, net::ReconnectedMessage>) {
+                    reconnectedBus_.publish(e);
                 }
             },
             event);
@@ -137,6 +150,11 @@ std::string RemoteGameProxy::loginFailureReason() const {
 int RemoteGameProxy::myRating() const {
     std::lock_guard<std::mutex> lock(sessionMutex_);
     return rating_;
+}
+
+bool RemoteGameProxy::accountWasCreated() const {
+    std::lock_guard<std::mutex> lock(sessionMutex_);
+    return accountCreated_;
 }
 
 KnownRatings RemoteGameProxy::ratings() const {

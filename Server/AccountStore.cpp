@@ -128,9 +128,9 @@ LoginResult AccountStore::login(const std::string& username, const std::string& 
         sqlite3_finalize(stmt);
 
         if (derivePbkdf2(password, salt) == storedHash) {
-            return LoginResult{true, "", rating};
+            return LoginResult{true, "", rating, false};
         }
-        return LoginResult{false, "bad_password", 0};
+        return LoginResult{false, "bad_password", 0, false};
     }
     sqlite3_finalize(stmt);
 
@@ -149,7 +149,7 @@ LoginResult AccountStore::login(const std::string& username, const std::string& 
     sqlite3_step(insertStmt);
     sqlite3_finalize(insertStmt);
 
-    return LoginResult{true, "", kStartingRating};
+    return LoginResult{true, "", kStartingRating, true};
 }
 
 EloUpdateResult AccountStore::recordResult(const std::string& winnerUsername, const std::string& loserUsername) {

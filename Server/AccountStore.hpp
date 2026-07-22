@@ -10,6 +10,8 @@ struct LoginResult {
     bool success = false;
     std::string failureReason;  // meaningful only if !success, e.g. "bad_password"
     int rating = 0;             // meaningful only if success
+    bool accountCreated = false;  // true only if this call auto-registered a brand-new
+                                   // username, rather than validating an existing one
 };
 
 // Both accounts' ratings after an Elo update - see AccountStore::recordResult.
@@ -35,8 +37,9 @@ public:
 
     // Auto-registers a brand-new username (starting rating 1200) with the given password;
     // an existing username must match its stored password or this fails with
-    // "bad_password". Never stores the password itself - see the .cpp for the PBKDF2/CNG
-    // hashing this wraps.
+    // "bad_password". LoginResult::accountCreated tells the caller which case happened,
+    // rather than the caller having to guess. Never stores the password itself - see the
+    // .cpp for the PBKDF2/CNG hashing this wraps.
     LoginResult login(const std::string& username, const std::string& password);
 
     // Standard Elo update (K=32) for both accounts - see the .cpp for the exact formula.
