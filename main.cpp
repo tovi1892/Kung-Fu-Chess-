@@ -55,14 +55,22 @@ private:
 // this only ever affects what's drawn, never what's sent.
 class BoardClickHandler : public IInputHandler {
 public:
-    BoardClickHandler(RemoteGameProxy& proxy, CoordinateMapper mapper) : proxy_(proxy), mapper_(mapper) {}
+    BoardClickHandler(RemoteGameProxy& proxy, const OpenCvView& view) : proxy_(proxy), view_(view) {}
 
     void handleClick(int x, int y) override {
         if (proxy_.isSpectator()) {
             return;  // read-only - nothing to select, nothing to send
         }
 
-        const Position cell = mapper_.pixelToCell(x, y);
+        // Read view_.mapper() fresh on every click rather than caching a copy at
+        // construction time - OpenCvView rebuilds its mapper whenever the window is
+        // resized (see OpenCvView::handlePossibleResize), so a cached copy would silently
+        // go stale and map clicks to the wrong cell after any resize. x/y are real-OS-window-
+        // relative (raw mouse coordinates), but mapper() is content-frame-relative (see its
+        // own doc comment) - subtracting the current letterbox offset translates between
+        // the two, a no-op (0,0) whenever the window's live aspect ratio matches the
+        // reference one and no letterboxing is showing.
+        const Position cell = view_.mapper().pixelToCell(x - view_.contentOffsetX(), y - view_.contentOffsetY());
         proxy_.sendClick(cell.row(), cell.col());
 
         if (localSelection_.has_value()) {
@@ -78,7 +86,7 @@ public:
 
 private:
     RemoteGameProxy& proxy_;
-    CoordinateMapper mapper_;
+    const OpenCvView& view_;
     std::optional<Position> localSelection_;
 };
 
@@ -221,14 +229,16 @@ int main(int argc, char** argv) {
         logger.log(std::string("Connected as ") + (proxy.myColor() == PlayerColor::White ? "White" : "Black"));
     }
 
-    const int windowSize = 800;
-    const int sidePanelWidth = 260;
-    OpenCvView view(windowSize, sidePanelWidth);
+    // OpenCvView's own defaults already are RenderConfig::kDefaultWindowBoardSizePx/
+    // kDefaultSidePanelWidthPx - constructing with them explicitly here (rather than
+    // duplicating the same numbers as local literals) means they're also, by construction,
+    // the *reference* size LayoutScale measures every resize against.
+    OpenCvView view;
 
-    // The click handler shares the view's own mapper (via the read-only accessor)
-    // rather than constructing a second, separate one - so the board's on-screen
-    // position can never drift out of sync between drawing and click handling.
-    auto clickHandler = std::make_shared<BoardClickHandler>(proxy, view.mapper());
+    // The click handler shares the view itself (not a snapshotted mapper copy) so it always
+    // reads the current mapper - see BoardClickHandler::handleClick for why a cached copy
+    // would go stale across a resize.
+    auto clickHandler = std::make_shared<BoardClickHandler>(proxy, view);
     view.setInputHandler(clickHandler);
     view.init();
 
@@ -264,6 +274,13 @@ int main(int argc, char** argv) {
         sounds.play("UI/assets/sounds/game_end.wav");
         logger.log(std::string("Opponent disconnected - ") + (event.winner == PlayerColor::White ? "White" : "Black") +
                    " wins by forfeit");
+    });
+    proxy.onReconnected().subscribe([&](const net::ReconnectedMessage& event) {
+        const bool isMe = !proxy.isSpectator() && event.color == proxy.myColor();
+        banner.show(isMe ? "Reconnected!" : "Opponent reconnected!", kBannerDuration);
+        logger.log(isMe ? "Reconnected - resuming match"
+                         : std::string((event.color == PlayerColor::White) ? "White" : "Black") +
+                               " reconnected - forfeit countdown cancelled");
     });
 
     while (view.isOpen()) {

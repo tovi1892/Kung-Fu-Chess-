@@ -249,6 +249,53 @@ int main() {
                 const std::string username = authIt->second.username;
                 const int rating = authIt->second.rating;
 
+                // Reconnection: does this authenticated username match a seat with a
+                // pending forfeit, in any room? Recognized by identity (an already-
+                // password-authenticated username), not by the client knowing/passing a
+                // room id - quick-match rooms never expose one anyway. Deliberately
+                // unconditional on join->mode/join->room: whatever the player actually
+                // clicked, an active pending-forfeit seat wins, since resuming an existing
+                // match within the grace window is what a reconnecting player wants.
+                bool reconnected = false;
+                for (auto& [roomKey, roomPtr] : rooms) {
+                    if (!roomPtr->pendingForfeit.has_value()) {
+                        continue;
+                    }
+                    const auto sessionIt =
+                        std::find_if(roomPtr->players.begin(), roomPtr->players.end(), [&](const auto& entry) {
+                            return entry.second.username == username &&
+                                   entry.second.color == roomPtr->pendingForfeit->disconnectedColor;
+                        });
+                    if (sessionIt == roomPtr->players.end()) {
+                        continue;
+                    }
+
+                    PlayerSession session = std::move(sessionIt->second);
+                    roomPtr->players.erase(sessionIt);
+                    // Clears whatever was selected at the moment of disconnect (attachGame's
+                    // documented side effect) - re-attaching the same game it already had,
+                    // purely for that side effect.
+                    session.controller->attachGame(session.controller->game());
+                    const PlayerColor reconnectedColor = session.color;
+                    roomPtr->players[id] = std::move(session);
+                    connectionRoom[id] = roomKey;
+                    roomPtr->pendingForfeit.reset();
+
+                    queueSend(id, encodeWelcome(reconnectedColor));
+                    queueSend(id, encodeRoom(roomKey));
+                    const auto [whiteName, blackName] = namesOf(*roomPtr);
+                    queueSend(id, encodePlayers(whiteName, blackName));
+                    queueToRoom(*roomPtr, encodeReconnected(reconnectedColor));
+                    logger.log("room \"" + roomKey + "\": " + username +
+                               " reconnected - forfeit countdown cancelled");
+
+                    reconnected = true;
+                    break;
+                }
+                if (reconnected) {
+                    break;
+                }
+
                 if (join->mode == JoinMode::QuickMatch) {
                     const auto waitingIt =
                         std::find_if(quickMatchWaiting.begin(), quickMatchWaiting.end(), [&](const WaitingPlayer& w) {
