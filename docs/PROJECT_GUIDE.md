@@ -151,9 +151,14 @@ architecture in miniature. Everything below is detail on each stop along that pa
 - `struct MoveEntry` / `struct PlayerPanel` / `struct Scoreboard` — one move's
   time+notation, one player's full panel (name/score/move list), and both panels
   together — the data behind the side-panel UI.
+- `struct Banner` — a transient game-lifecycle message (`visible`, `text`) a view should
+  display centered over the board for a short while (game start/end, forfeit, reconnect) —
+  the composition root (§4.17) owns how long `visible` stays true. Same reasoning as
+  `BoardHighlight`: purely presentation, carries zero gameplay meaning.
 - `class IGameView` — the interface any renderer must implement: `init()` (open the
-  window once), `render(pieces, highlight, scoreboard)` (draw one frame), `isOpen()`
-  (false once the window is closed — what ends `main.cpp`'s loop), `setInputHandler(...)`.
+  window once), `render(pieces, highlight, scoreboard, banner)` (draw one frame),
+  `isOpen()` (false once the window is closed — what ends the composition root's render
+  loop), `setInputHandler(...)`.
 
 **File:** `Core_Interfaces/IInputHandler.hpp`
 
@@ -638,7 +643,7 @@ remaining height (so the latest move is always visible rather than the list sile
 overflowing off-screen). `formatElapsed` turns a millisecond count into `mm:ss.mmm`. This
 file is **completely chess-agnostic** — it has no idea what a board, a piece, or a chess
 move even is; it just draws a named, scored, timestamped list. That's precisely why it's
-a separate file from `BoardRenderer` — see §5 for the full rationale.
+a separate file from `BoardRenderer` — see §6 for the full rationale.
 
 **`OpenCvView.hpp`/`.cpp`** — the only `IGameView` implementation, and now (after this
 session's refactor) a thin ~80-line orchestrator over the two renderer files above:
@@ -648,38 +653,317 @@ session's refactor) a thin ~80-line orchestrator over the two renderer files abo
 - `init()` — builds the static background (`drawStaticBackground`: panel background color
   + delegating to `drawCheckerboardAndLabels` + the two panel-divider lines) once, opens
   the OpenCV window, registers the mouse callback.
-- `render(pieces, highlight, scoreboard)` — **clones** the cached static background (see
-  §4.13's note on why), draws both player panels, draws the selection/last-move outlines
-  if present, draws every piece, then shows the frame and polls for the Escape key /
-  window-closed to set `closed_`.
+- `render(pieces, highlight, scoreboard, banner)` — **clones** the cached static
+  background (see §4.13's note on why), draws both player panels, draws the
+  selection/last-move outlines if present, draws every piece, draws the banner if visible
+  (`Banner`, `Core_Interfaces/IGameView.hpp` — start/end-of-game and forfeit/reconnect
+  text), then shows the frame and polls for the Escape key / window-closed to set
+  `closed_`.
 - `onMouse` — the static callback OpenCV invokes; forwards left-clicks to whatever
   `IInputHandler` was registered.
-- `mapper()` — read-only accessor `main.cpp` uses instead of building a second mapper.
+- `mapper()` — read-only accessor the composition root (§4.17) uses instead of building a
+  second mapper.
 
-### 4.15 `main.cpp` — the composition root
+### 4.15 `UI/Windows/` — the Win32 login/room/play screens
 
-This is the one file that's allowed to know about *both* `Logic/` and `UI/` — it's where
-everything gets wired together.
+Three small native (non-OpenCV) windows, shown in sequence before the OpenCV game window
+ever opens, plus a shared theme they all paint with. Everything here is deliberately
+**Network-agnostic** — none of these classes talk to `RemoteGameProxy` (§4.16) or know a
+`net::` type exists; the composition root (§4.17) is the only place that bridges what a
+screen returns into an actual network call. Same boundary discipline as
+`Core_Interfaces/` (§4.1): a screen just collects a choice and hands it back as plain data.
 
-- `kInitialBoard` — the standard starting position as `BoardParser` text.
-- `class BoardClickHandler : public IInputHandler` — the glue between raw pixel clicks
-  and `Controller`. Also tracks the "most recent accepted move" purely for the
-  last-move highlight (`recentMove()`, valid for `kLastMoveHighlightDuration` = 1 second)
-  — deliberately kept *here*, not in `Controller` (which only owns selection) or
-  `GameEngine` (which has no concept of "recent"), because it's a pure presentation
-  concern.
-- `buildScoreboard(game)` — reads `GameEngine::gameRecord()` and repackages it into the
-  `Scoreboard` struct `IGameView::render` expects.
-- `main()` — parses the initial board, builds `RuleEngine` → `GameEngine` → `Controller`,
-  constructs the `OpenCvView`, wires the click handler through the view's own mapper,
-  calls `init()`, then loops: advance time by 16ms, build this frame's `BoardHighlight`
-  from `Controller::selectedPosition()` + `BoardClickHandler::recentMove()`, and call
-  `view.render(game->getRenderState(), highlight, buildScoreboard(*game))` — until
-  `view.isOpen()` goes false.
+**`ChessTheme.hpp`/`.cpp`** — one shared color palette (as `Color` — already
+OpenCV-free, so the same values could in principle be reused by the OpenCV-rendered board
+too), cached `HFONT`s, and paint helpers (`paintStatic`/`paintEdit`/`drawButton`) every
+screen below calls from its own `WM_CTLCOLORSTATIC`/`WM_CTLCOLOREDIT`/`WM_DRAWITEM`
+handler. One responsibility — how the flow *looks* — screens still own their own window
+procs and message loops.
+
+**`LoginScreen.hpp`/`.cpp`** — the first screen: username + masked password field, one
+Sign In button. `show(errorMessage, prefillUsername)` blocks until Sign In is clicked
+(returns `{username, password}`, both sanitized) or the window closes (`std::nullopt`,
+treated as "quit the app"). `errorMessage` re-displays a `LOGIN_FAIL` reason on retry;
+`prefillUsername` re-offers the last-typed username (only the password was wrong) and
+focuses the password field directly when set.
+
+**`LoginResultScreen.hpp`/`.cpp`** — a brief "Welcome back, alice (1200)" / "Account
+created for alice (1200)" confirmation, shown once `LOGIN_OK` actually arrives. Split out
+of `LoginScreen` (which only collects credentials) because it's a genuinely separate
+window that merely happens to run right after — the two share nothing but a `sanitize()`
+helper `LoginScreen` alone still needs.
+
+**`RoomChoiceScreen.hpp`/`.cpp`** — the second screen: three mutually exclusive radio
+choices (Quick Match / Create Room / Join Room, the last with its own room-id field), a
+Next button, a Log Out button. `show(welcomeText)` returns a `Result{Outcome, RoomChoice}`
+— `Chosen` (with the picked `RoomChoice`), `LogOut` (tears down the current connection and
+returns to `LoginScreen`), or `Cancelled` (quit).
+
+**`PlayConfirmScreen.hpp`/`.cpp`** — the third and final screen: shows the previous
+screen's choice read-only, plus a Play button that's the *only* thing that actually
+triggers the network join. `show(choice, onPlay, pollJoin)` stays Network-agnostic by
+taking two callbacks instead of a `RemoteGameProxy&`: `onPlay` fires once, the instant
+Play is clicked (the composition root's hook to call `RemoteGameProxy::join(...)`); after
+that it switches to a disabled "Connecting..."/"Searching for opponent..." display and
+polls `pollJoin()` repeatedly — `Succeeded` resolves `show()` with `Outcome::Play`,
+`Failed` shows the returned text and reverts to the interactive Play/Back state (rather
+than exiting) so the player can retry. Internally alternates between a blocking
+`GetMessage` loop (normal) and a `PeekMessage`-polling loop (while a join is in flight, so
+`pollJoin()` gets called every ~50ms without blocking the window).
+
+**A real bug fixed this session, worth knowing about if you're reading these files**:
+`LoginScreen`/`LoginResultScreen`/`RoomChoiceScreen`/`PlayConfirmScreen`'s `WM_DESTROY`
+handlers deliberately call **no** `PostQuitMessage` — each screen's own message loop exits
+via its own local `done` flag, not `WM_QUIT`. `PostQuitMessage` posts to the *thread's*
+message queue, and since all four screens run on the same thread in sequence, a stray
+posted `WM_QUIT` would sit unconsumed after one screen's loop already stopped via `done`,
+and poison the *next* screen's very first `GetMessage()` call — making it return
+immediately without ever pumping that new window's messages. Every one of these
+`WM_DESTROY` handlers has an explanatory comment instead of the more "obvious"
+`PostQuitMessage(0)` specifically because of this.
+
+### 4.16 `Client/` — the network stand-in for a local `GameEngine`
+
+**`RemoteGameProxy.hpp`/`.cpp`** is the client-side mirror of a local `GameEngine`: it
+deliberately exposes the same shape (`onMoveStarted`/`onPieceCaptured`/`onGameStarted`/
+`onGameEnded`/`getRenderState`) so the composition root's subscriber-wiring code barely
+changes from what a local-`GameEngine` version would look like — `game->` becomes
+`proxy->` and that's nearly the whole diff. Construction immediately sends
+`LOGIN <username> <password>` the instant the underlying `WsClientTransport` connection
+opens; it does **not** send `JOIN` itself — `join(mode, room)` is a separate, explicit call
+the composition root makes once a room/match choice is actually confirmed (§4.17), so a
+connection can sit authenticated-but-unrouted for as long as the login/room-choice screens
+need.
+
+**Thread-safety** is the interesting part of this class: `WsClientTransport::onMessage`
+fires `handleMessage` on IXWebSocket's own background I/O thread. Plain state (the render
+snapshot, `players()`, session flags like `hasRole()`/`myColor()`) is protected by three
+small purpose-scoped mutexes (`stateMutex_`/`playersMutex_`/`sessionMutex_`) and can be
+read directly from the main thread at any time. The **discrete bus events** (`MoveStarted`,
+`PieceCaptured`, `GameStarted`, `GameEnded`, `ForfeitMessage`, `ReconnectedMessage`) are
+different: publishing them immediately from the network thread would run every subscriber
+(`SoundPlayer`, the score/move-log panels, the banner) on that thread too, racing the main
+thread's render loop touching the same data. Instead, `handleMessage` just pushes them onto
+`pendingEvents_` (behind `queueMutex_`), and they're only actually published from
+`pollEvents()` — which the composition root's render loop calls exactly once per frame, on
+the main thread — so every subscriber still only ever runs on the one thread it always has.
+
+**`Network/WsClientTransport.hpp`/`.cpp`** is the client-side counterpart to
+`WsServerTransport` (§5.8) — the one place allowed to touch `ix::` directly on the client.
+Simpler than its server-side counterpart: the client has no shared mutable *game* state of
+its own to protect at the transport layer (`RemoteGameProxy` only ever appends to its own
+`EventBus`es or overwrites its own latest-state snapshot), so there's no
+`gameMutex`-equivalent here at all.
+
+### 4.17 `main.cpp` — the composition root
+
+The client-side composition root — the one file allowed to know about `Logic/`, `UI/`
+(both `OpenCV/` and `Windows/`), and `Client/` all at once. (This replaces an earlier,
+pre-networking version of `main.cpp` that built a local `GameEngine` directly and never
+talked to a server at all — §5 documents the server-side half of what replaced it.)
+
+Split into two functions plus a thin `main()`, deliberately separated at the point where a
+match is actually confirmed:
+
+- **`establishConnection(logger, serverUrl, proxyOpt)`** — drives `LoginScreen` → `LOGIN`
+  → `RoomChoiceScreen` → `PlayConfirmScreen` → `JOIN`, in two nested retry loops (outer:
+  re-show `LoginScreen` on a wrong password or an explicit Log Out; inner: re-show
+  `RoomChoiceScreen` alone on a quick-match timeout or a Back from `PlayConfirmScreen`,
+  without forcing a fresh login). Returns `ConnectionOutcome::Matched` once a match is
+  confirmed, or `Exit` if the user quit at any screen. `proxyOpt` (a
+  `std::optional<RemoteGameProxy>&`) is emplaced into directly on each login attempt
+  rather than constructed locally and returned by value — `RemoteGameProxy`'s constructor
+  registers callbacks that capture `this`, so moving or copying it after construction
+  would leave those callbacks pointing at a stale address.
+- **`runGameSession(logger, proxy)`** — everything from "Connected as White/Black/
+  spectator" onward: builds the `OpenCvView` + `BoardClickHandler`, wires all six of
+  `RemoteGameProxy`'s event buses to scoreboard/banner/sound side effects, and runs the
+  render loop (`proxy.pollEvents()` → refresh scoreboard/ratings from the proxy → build
+  this frame's `BoardHighlight`/`Banner` → `view.render(...)`) until the window closes.
+- **`main(argc, argv)`** itself is now just: construct `logger`/`serverUrl`, call
+  `establishConnection`, return early on `Exit`, otherwise call `runGameSession`. An
+  optional command-line argument overrides the server host (default `127.0.0.1`).
+
+Other pieces still living in this file's anonymous namespace:
+
+- **`class BoardClickHandler : public IInputHandler`** — forwards raw pixel clicks to the
+  server via `RemoteGameProxy::sendClick`, and keeps a purely cosmetic, optimistic local
+  echo of the select/deselect pattern for the selection highlight (`localSelection()`) —
+  the server remains the sole authority on whether a selection is actually legal; this
+  only ever affects what's drawn, never what's sent. Reads `view.mapper()` fresh on every
+  click (not a cached copy) since `OpenCvView` rebuilds its mapper on every resize.
+- **`template <typename T> class Expiring`** — a tiny (value, expiry) holder used
+  identically for both the last-move highlight and the start/end/forfeit/reconnect banner
+  text, so `runGameSession` doesn't duplicate the "show this for N milliseconds" logic
+  twice.
+- **`toJoinMode(RoomChoice::Mode)`** — the one place that maps `RoomChoiceScreen`'s
+  UI-facing `RoomChoice::Mode` onto the wire protocol's `net::JoinMode`, since
+  `RoomChoiceScreen` itself stays Network-agnostic.
+- **`panelFor(scoreboard, color)`** — the small `White`/`Black` → `scoreboard.white`/
+  `.black` lookup used throughout `runGameSession`.
 
 ---
 
-## 5. Why it's built this way
+## 5. `Server/` — the authoritative multiplayer backend
+
+Everything in this section builds into a separate executable (`kungfu_server`, from
+`Server/*.cpp` + `kungfu_logic` + `kungfu_network`) from the client (`kungfu_app`, from
+`main.cpp` + `kungfu_ui` + `kungfu_client`, which itself links `kungfu_logic` +
+`kungfu_network`) — see the root `CMakeLists.txt`. The server owns one real `GameEngine`
+per match; every connected client is a thin `RemoteGameProxy`
+(`Client/RemoteGameProxy.hpp`/`.cpp`) that talks to it over a small WebSocket text protocol
+(`Network/Protocol.hpp`/`.cpp`) instead of holding a `GameEngine` of its own. **This section
+documents the server side only** — `Client/RemoteGameProxy` and the login/room/play UI
+screens (`UI/Windows/*Screen.*`) are documented in §4.15-§4.17 instead.
+
+### 5.1 `Server/main.cpp` — the composition root
+
+Plays the same role for the server that `main.cpp` (§4.17) plays for the client: it owns
+nothing but wiring. Everything it actually *does* is delegated to the five focused pieces
+below; `main()` itself is just `WsServerTransport::onConnect`/`onMessage`/`onDisconnect`
+handlers plus a 16ms (`kTickMs`) game tick loop that advances every room's `GameEngine` and
+broadcasts a `STATE` snapshot.
+
+One thing genuinely lives only here: **`gameMutex`**. `WsServerTransport` (§5.8) delivers
+`onConnect`/`onMessage`/`onDisconnect` on IXWebSocket's own background I/O thread(s), while
+every `GameEngine`/`Controller` was built assuming single-threaded access — so every one of
+`main()`'s three handlers, plus the tick loop, takes
+`std::lock_guard<std::mutex> lock(gameMutex)` for its entire body. None of the five classes
+below hold a lock of their own; every method on `RoomManager`/`ConnectionSessions`/`Outbox`
+explicitly documents that it assumes the caller already holds `gameMutex` — the same
+contract, repeated identically, rather than each class inventing its own thread-safety
+story.
+
+### 5.2 `Server/Outbox.hpp`/`.cpp` — the lock-safe send queue
+
+The one piece of real plumbing, and the reason the other four classes below don't need to
+think about networking at all. `enqueue(id, text)`/`enqueueToRoom(room, text)` just buffer a
+`(ConnectionId, text)` pair — assumed to be called with `gameMutex` already held. `flush()`
+is the opposite: called with the lock **not** held, it briefly re-locks the *same*
+`gameMutex` instance (given at construction, alongside the `WsServerTransport&`) just long
+enough to swap the buffered vector out, then calls `WsServerTransport::send` for each
+message with no lock held at all.
+
+This two-phase shape exists because of a real crash: `ix::WebSocket::send()` can, if it
+detects a dead connection, synchronously invoke that same transport's Close callback on the
+*same* thread — which tries to re-lock `gameMutex` inside `onDisconnect`, deadlocking against
+itself. Queuing while locked and sending only after unlocking is what makes that impossible.
+(Explicitly considered and rejected: giving `Outbox` its own private mutex instead of reusing
+`gameMutex` — that would be a real, if small, behavioral change, introducing a new
+interleaving possibility that doesn't exist today.)
+
+### 5.3 `Server/ConnectionSessions.hpp`/`.cpp` — the auth state machine
+
+Tracks exactly one thing: a connection's identity transition from *pending* (opened, hasn't
+sent a valid `LOGIN` yet) to *authenticated* (`markPending`/`isPending`/`authenticate`/
+`find`/`forget`). It knows nothing about `AccountStore`, rooms, or the wire protocol —
+`Server/main.cpp`'s `onMessage` still owns calling `AccountStore::login(...)` and sending
+`LOGIN_OK`/`LOGIN_FAIL`; this class only remembers the result so later code (the JOIN-gating
+check, `onDisconnect`) can answer "who is this" without re-deriving it. `forget(id)` erases
+both the pending and authenticated cases in one call, regardless of which (if either)
+applied — deliberately unconditional, so no code path can leave a stale entry behind.
+
+### 5.4 `Server/RoomManager.hpp`/`.cpp` — the room/matchmaking authority
+
+The largest of the five, and the one that grew in stages (originally just room storage +
+quick-match pairing; reconnection matching, connection routing, and the forfeit-grace
+lifecycle were folded in one at a time afterward, each independently verified before the
+next). It owns:
+
+- **Room storage** — `getOrCreateRoom(key, onCreated)`: returns the existing `Room` for a
+  key, or builds one via `Room.hpp`'s free `createRoom(key)` and fires `onCreated` exactly
+  once (`Server/main.cpp`'s own `registerRoomBroadcasts` lambda, wiring a fresh
+  `Room::game`'s event buses to `Outbox`, is the only caller of that hook —
+  `RoomManager` itself has zero awareness that `GameEngine` has event buses at all).
+  `rooms()` exposes the underlying map directly, since `Server/main.cpp`'s tick loop (the
+  `STATE` broadcast) still needs to reach into each `Room`'s contents.
+- **Quick-match pairing** — `matchWaiter(rating, eloRange)`/`addWaiter`/`removeWaiter`/
+  `reapExpiredWaiters(now)`: a plain `std::vector<WaitingPlayer>`, linear-scanned (handling
+  many simultaneous matches at scale is an explicit non-goal for now). `eloRange` is passed
+  in per call rather than stored — `RoomManager` owns the waiting-list *mechanics*, not the
+  matchmaking *policy* constant (`kEloMatchRangeElo` stays a `Server/main.cpp` constant).
+- **Reconnection matching** — `reconnect(username, newConnectionId)`: scans every room for
+  a `pendingForfeit` whose disconnected seat's username matches, and if found, re-seats that
+  `PlayerSession` under the new connection id (clearing the stale selection via
+  `Controller::attachGame` as a documented side effect) and clears `pendingForfeit`.
+  Recognized by identity (an already-password-authenticated username), not a client-held
+  token or room id — quick-match rooms never expose one anyway. Pure state mutation; the
+  caller (`Server/main.cpp`) still owns sending `WELCOME`/`ROOM`/`PLAYERS`/`RECONNECTED` and
+  logging.
+- **Connection routing** — `assignConnectionToRoom`/`isConnectionRouted`/
+  `roomForConnection`/`forgetConnectionRoom`: the reverse index (connection id → room key)
+  that used to be a bare `main()`-local map. `roomForConnection` returns `Room*` (nullable,
+  non-owning) rather than forcing every caller through a second `rooms().at(key)` lookup.
+- **Forfeit-grace lifecycle** — `startForfeitCountdown(room, disconnectedColor, graceMs)`
+  (called from `onDisconnect`) and `resolveForfeitIfExpired(room, now)` (called from the tick
+  loop, **one room at a time, inline in the existing per-room loop** — deliberately *not* a
+  batch-return like `reapExpiredWaiters`, because this room's `game->stop()` must run before
+  this same room's `game->wait(kTickMs)` in the same tick, or `GameEngine` would simulate one
+  extra tick of motion after the deadline already passed). These two are two halves of one
+  state machine over `Room::pendingForfeit`, and were always designed and extracted
+  together, never separately.
+
+### 5.5 `Server/MatchResult.hpp`/`.cpp` — Elo application
+
+One free function, `applyMatchResult(room, winnerColor, accounts, outbox, logger)`: looks up
+both players' usernames from `room.players` (must still be present — callers run this
+*before* any post-match player/spectator bookkeeping), calls `AccountStore::recordResult`,
+and broadcasts the resulting `RATINGS` message. Called from two places — the room's
+`onGameEnded` bus subscriber (a real king capture) and the tick loop's
+`resolveForfeitIfExpired` result (a disconnect timing out) — which is exactly why it takes
+every dependency as an explicit parameter rather than capturing anything: a plain function,
+not a class, since it has no state of its own to keep between calls.
+
+### 5.6 `Server/ClickRouter.hpp`/`.cpp` — click validation/routing
+
+One free function, `handleClick(connectionId, decoded, roomManager)` — the last stop for a
+`CLICK` message once a connection is fully joined. Does nothing if: the connection isn't
+routed to any room, it's a spectator (or a forfeited match's former player), the decoded
+message isn't actually a `ClickMessage`, or — the one rule with no local-play equivalent (a
+single mouse could always move either color) — it's trying to *select* a piece that isn't
+its own color. Once a selection is already active, the second click (the real move/jump
+target) passes straight through to `Controller::handleCellClick` without that last check.
+
+### 5.7 `Server/Room.hpp`/`.cpp` and `Server/AccountStore.hpp`/`.cpp` — the data these build on
+
+**`Room.hpp`** (no `.cpp` logic of its own beyond the `createRoom` factory) is the plain-data
+record `RoomManager` owns collections of: `PlayerSession` (username, color, that
+connection's own `Controller` — both players' `Controller`s wrap the *same* shared
+`GameEngine`), `PendingForfeit` (disconnected color + deadline), and `Room` itself (key,
+`Board`/`RuleEngine`/`GameEngine`, up to two `players`, any number of read-only
+`spectators`, an optional `pendingForfeit`). Connection ids are plain `std::string`
+throughout — `Room.hpp`/`RoomManager.hpp` deliberately never `#include` anything under
+`Network/`, staying pure Logic-composition so they could, in principle, be reused without a
+WebSocket in the picture at all.
+
+**`AccountStore.hpp`/`.cpp`** is the one place allowed to touch `sqlite3_*` directly (same
+"one wrapper per external library" convention as `Img`/`SoundPlayer`/`WsServerTransport`):
+`login(username, password)` auto-registers a brand-new username (starting rating 1200) or
+validates an existing one's password, and `recordResult(winner, loser)` applies a standard
+Elo update (K=32). No internal mutex — relies on SQLite's own serialized threading mode
+instead.
+
+### 5.8 `Network/` — the transport both processes share
+
+**`WsServerTransport.hpp`/`.cpp`** — the one place allowed to touch `ix::` directly on the
+server side; every connection is identified by a small opaque `ConnectionId` string, never
+an `ix::WebSocket*`. `onConnect`/`onMessage`/`onDisconnect` fire on IXWebSocket's own
+background thread(s) — the thread-safety fact that drives `gameMutex`'s existence in §5.1.
+
+**`Protocol.hpp`/`.cpp`** — the wire format: one `std::variant<...>` (`DecodedMessage`)
+covering every message either side ever sends (`LoginMessage`, `JoinMessage`,
+`ClickMessage`, `WelcomeMessage`, `ForfeitWarningMessage`, `ReconnectedMessage`,
+`StateMessage`, and more), plus one `encodeXxx`/`decode` pair per shape. Reuses `Logic`'s
+own event structs (`MoveStarted`/`PieceCaptured`/`GameStarted`/`GameEnded`) directly as
+payload shapes rather than maintaining a parallel "network event" hierarchy.
+
+**`Logger.hpp`/`.cpp`** — timestamps and prints every `log()` call, appending the same line
+to a file; used identically (just a different tag, `"SERVER"` vs `"CLIENT"`) by both
+executables so a bad run is debuggable on either side after the fact.
+
+---
+
+## 6. Why it's built this way
 
 **Layering with a strict, one-directional dependency chain** (`model → rules →
 movement/collision → realtime → engine → input`, with `io`/`texttests`/`history` depending
@@ -722,7 +1006,7 @@ completely different game, and it keeps `OpenCvView` itself down to orchestratio
 
 ---
 
-## 6. Suggested reading order if you want to actually absorb this
+## 7. Suggested reading order if you want to actually absorb this
 
 1. `Logic/include/model/Enums.hpp` + `GameConfig.hpp` — the vocabulary everything else
    uses.
@@ -737,10 +1021,23 @@ completely different game, and it keeps `OpenCvView` itself down to orchestratio
    assumes.
 6. `Logic/include/input/Controller.hpp`/`.cpp` — short, and ties everything above back to
    "a click."
-7. `main.cpp` — see it all wired together end to end.
-8. `UI/OpenCV/OpenCvView.cpp` + `BoardRenderer.cpp` — how a `RenderPiece` list actually
-   becomes pixels.
+7. `main.cpp` (§4.17) — the client's composition root: `establishConnection` (login/room/
+   play) then `runGameSession` (the actual render loop).
+8. `UI/Windows/LoginScreen.hpp` + `RoomChoiceScreen.hpp` + `PlayConfirmScreen.hpp` (§4.15)
+   — the three pre-game screens `establishConnection` drives, each Network-agnostic.
+9. `Client/RemoteGameProxy.hpp`/`.cpp` (§4.16) — the client-side stand-in for a local
+   `GameEngine`, and its split between plain-mutex state and queued bus events.
+10. `UI/OpenCV/OpenCvView.cpp` + `BoardRenderer.cpp` — how a `RenderPiece` list actually
+    becomes pixels.
+11. `Server/main.cpp` + `RoomManager.hpp`/`.cpp` (§5) — the authoritative backend every
+    client above is actually talking to: one real `GameEngine` per room, reached from
+    `Server/ClickRouter.cpp` rather than a local `Controller` call.
 
-Section 3 of this document (the traced click) is the fastest way to re-orient yourself
-any time you get lost in a specific file — it's the same path every real interaction
-takes.
+Section 3 of this document (the traced click) is the fastest way to re-orient yourself in
+the core Logic mechanics any time you get lost in a specific file — but it predates the
+network split and stops at `Controller`/`GameEngine`: in the real client-server build, a
+click travels `OpenCvView::onMouse` → `BoardClickHandler` → `RemoteGameProxy::sendClick`
+→ (the network) → `Server/ClickRouter::handleClick` → `Controller::handleCellClick`, not
+straight from `main.cpp` to `Controller` in one process. Section 3's walk is still
+accurate for everything *after* that hand-off (`Controller` onward) — just read it as the
+server-side continuation, not the whole path.

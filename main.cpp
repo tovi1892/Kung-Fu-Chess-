@@ -13,6 +13,7 @@
 #include "Geometry/CoordinateMapper.hpp"
 #include "Network/Logger.hpp"
 #include "OpenCV/OpenCvView.hpp"
+#include "Windows/LoginResultScreen.hpp"
 #include "Windows/LoginScreen.hpp"
 #include "Windows/PlayConfirmScreen.hpp"
 #include "Windows/RoomChoiceScreen.hpp"
@@ -104,21 +105,23 @@ net::JoinMode toJoinMode(RoomChoice::Mode mode) {
     }
 }
 
-}  // namespace
+enum class ConnectionOutcome { Matched, Exit };
 
-int main(int argc, char** argv) {
-    net::Logger logger("CLIENT", "logs/client.log");
-
-    const std::string host = argc >= 2 ? argv[1] : "127.0.0.1";
-    const std::string serverUrl = "ws://" + host + ":7777";
-
-    // LoginScreen -> LOGIN -> RoomChoiceScreen -> PlayConfirmScreen -> JOIN. Two nested
-    // retry loops: the outer one re-shows LoginScreen (a wrong password, or an explicit Log
-    // Out from the room-choice screen); the inner one re-shows RoomChoiceScreen alone (a
-    // quick-match search timing out, or a Back from PlayConfirmScreen, returns to choosing
-    // a mode again, without forcing a fresh login on an already-authenticated connection).
-    std::optional<RemoteGameProxy> proxyOpt;  // constructed fresh each login retry; never
-                                               // moved, since its internal callbacks capture `this`
+// Drives LoginScreen -> LOGIN -> RoomChoiceScreen -> PlayConfirmScreen -> JOIN until either
+// a match is confirmed (Matched) or the user quits at any screen (Exit). Two nested retry
+// loops: the outer one re-shows LoginScreen (a wrong password, or an explicit Log Out from
+// the room-choice screen); the inner one re-shows RoomChoiceScreen alone (a quick-match
+// search timing out, or a Back from PlayConfirmScreen, returns to choosing a mode again,
+// without forcing a fresh login on an already-authenticated connection).
+//
+// proxyOpt is emplaced into directly on each login attempt (never constructed locally and
+// returned by value) - RemoteGameProxy's internal callbacks capture `this`, so moving or
+// copying it after construction would leave those callbacks pointing at a stale address.
+// On Exit, proxyOpt may still hold a spent, logged-in-but-never-matched connection (e.g. the
+// user cancelled from RoomChoiceScreen) - harmless, it's simply never touched again and
+// destroyed normally when the caller returns.
+ConnectionOutcome establishConnection(net::Logger& logger, const std::string& serverUrl,
+                                       std::optional<RemoteGameProxy>& proxyOpt) {
     std::string errorMessage;
     std::string lastUsername;  // re-offered as a prefill on retry - only the password was
                                 // ever wrong, no reason to make the player retype this too
@@ -127,7 +130,7 @@ int main(int argc, char** argv) {
         const auto credentials = LoginScreen::show(errorMessage, lastUsername);
         if (!credentials.has_value()) {
             logger.log("No username entered - exiting.");
-            return 0;
+            return ConnectionOutcome::Exit;
         }
         const auto& [username, password] = *credentials;
         lastUsername = username;
@@ -146,7 +149,7 @@ int main(int argc, char** argv) {
             continue;
         }
         logger.log(username + " logged in (rating " + std::to_string(loginAttempt.myRating()) + ")");
-        LoginScreen::showResult(username, loginAttempt.myRating(), loginAttempt.accountWasCreated());
+        LoginResultScreen::show(username, loginAttempt.myRating(), loginAttempt.accountWasCreated());
 
         const std::string welcomeText =
             "Signed in as " + username + " (rating " + std::to_string(loginAttempt.myRating()) + ")";
@@ -157,7 +160,7 @@ int main(int argc, char** argv) {
             const auto roomResult = RoomChoiceScreen::show(welcomeText);
             if (roomResult.outcome == RoomChoiceScreen::Outcome::Cancelled) {
                 logger.log("Room choice cancelled - exiting.");
-                return 0;
+                return ConnectionOutcome::Exit;
             }
             if (roomResult.outcome == RoomChoiceScreen::Outcome::LogOut) {
                 logger.log(username + " logged out");
@@ -169,9 +172,9 @@ int main(int argc, char** argv) {
             // Screen C: Play is what actually sends JOIN and waits for the server - not
             // RoomChoiceScreen's own Next. PlayConfirmScreen has no knowledge of
             // RemoteGameProxy itself (stays Network-agnostic like the other two screens),
-            // so onPlay/pollJoin are the hooks that let main.cpp drive the actual network
-            // side while PlayConfirmScreen just keeps its own window responsive and shows
-            // a "Connecting..."/"Searching for opponent..." state meanwhile.
+            // so onPlay/pollJoin are the hooks that let this function drive the actual
+            // network side while PlayConfirmScreen just keeps its own window responsive and
+            // shows a "Connecting..."/"Searching for opponent..." state meanwhile.
             std::chrono::steady_clock::time_point joinStartTime;
             const auto onPlay = [&]() {
                 joinStartTime = std::chrono::steady_clock::now();
@@ -204,7 +207,7 @@ int main(int argc, char** argv) {
             const auto confirmOutcome = PlayConfirmScreen::show(roomResult.choice, onPlay, pollJoin);
             if (confirmOutcome == PlayConfirmScreen::Outcome::Cancelled) {
                 logger.log("Play confirmation cancelled - exiting.");
-                return 0;
+                return ConnectionOutcome::Exit;
             }
             if (confirmOutcome == PlayConfirmScreen::Outcome::Back) {
                 continue;  // back to RoomChoiceScreen, same authenticated connection
@@ -218,11 +221,15 @@ int main(int argc, char** argv) {
             continue;  // back to LoginScreen, next iteration destroys this connection first
         }
         if (matched) {
-            break;
+            return ConnectionOutcome::Matched;
         }
     }
+}
 
-    RemoteGameProxy& proxy = *proxyOpt;
+// Runs one matched session end-to-end: builds the OpenCV view + click handler, wires
+// proxy's event buses to the scoreboard/banner/sound side effects, and drives the render
+// loop until the window closes.
+void runGameSession(net::Logger& logger, RemoteGameProxy& proxy) {
     if (proxy.isSpectator()) {
         logger.log("Connected as a spectator");
     } else {
@@ -338,6 +345,23 @@ int main(int argc, char** argv) {
 
         view.render(proxy.getRenderState(), highlight, scoreboard, frameBanner);
     }
+}
 
+}  // namespace
+
+int main(int argc, char** argv) {
+    net::Logger logger("CLIENT", "logs/client.log");
+
+    const std::string host = argc >= 2 ? argv[1] : "127.0.0.1";
+    const std::string serverUrl = "ws://" + host + ":7777";
+
+    // Constructed fresh each login retry (see establishConnection) and never moved - its
+    // internal callbacks capture `this`.
+    std::optional<RemoteGameProxy> proxyOpt;
+    if (establishConnection(logger, serverUrl, proxyOpt) == ConnectionOutcome::Exit) {
+        return 0;
+    }
+
+    runGameSession(logger, *proxyOpt);
     return 0;
 }

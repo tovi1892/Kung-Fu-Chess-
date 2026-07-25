@@ -26,14 +26,6 @@ public:
     // password, which always starts blank.
     static std::optional<std::pair<std::string, std::string>> show(const std::string& errorMessage = "",
                                                                      const std::string& prefillUsername = "");
-
-    // Shows a brief "Welcome back, alice (1200)" / "Account created for alice (1200)"
-    // confirmation once LOGIN_OK has actually arrived - so the player is told honestly
-    // whether their username just signed into an existing account or auto-registered a new
-    // one, rather than never finding out. Blocks until dismissed (Continue button or
-    // closing the window - either way just acknowledges the message, there's nothing else
-    // to decide here).
-    static void showResult(const std::string& username, int rating, bool accountCreated);
 };
 
 }  // namespace kungfu
