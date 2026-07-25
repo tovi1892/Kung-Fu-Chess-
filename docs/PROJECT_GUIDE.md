@@ -749,7 +749,7 @@ thread's render loop touching the same data. Instead, `handleMessage` just pushe
 the main thread — so every subscriber still only ever runs on the one thread it always has.
 
 **`Network/WsClientTransport.hpp`/`.cpp`** is the client-side counterpart to
-`WsServerTransport` (§5.8) — the one place allowed to touch `ix::` directly on the client.
+`WsServerTransport` (§5.9) — the one place allowed to touch `ix::` directly on the client.
 Simpler than its server-side counterpart: the client has no shared mutable *game* state of
 its own to protect at the transport layer (`RemoteGameProxy` only ever appends to its own
 `EventBus`es or overwrites its own latest-state snapshot), so there's no
@@ -818,23 +818,69 @@ screens (`UI/Windows/*Screen.*`) are documented in §4.15-§4.17 instead.
 
 ### 5.1 `Server/main.cpp` — the composition root
 
-Plays the same role for the server that `main.cpp` (§4.17) plays for the client: it owns
-nothing but wiring. Everything it actually *does* is delegated to the five focused pieces
-below; `main()` itself is just `WsServerTransport::onConnect`/`onMessage`/`onDisconnect`
-handlers plus a 16ms (`kTickMs`) game tick loop that advances every room's `GameEngine` and
-broadcasts a `STATE` snapshot.
+Now genuinely minimal: construct every long-lived object in dependency order (`AccountStore`
+→ `Logger` → `ConnectionSessions` → `RoomManager` → `WsServerTransport` → `Outbox`, each only
+ever depending on ones already constructed above it), construct `GameServer` with references
+to all of them, call `gameServer.run()`. Zero conditional logic, zero protocol knowledge,
+zero room/game logic — `std::mutex gameMutex` is declared here (since `Outbox` and
+`GameServer` both need a reference to the same instance) but nothing in `main()` itself ever
+locks it; see §5.2 for what actually does.
 
-One thing genuinely lives only here: **`gameMutex`**. `WsServerTransport` (§5.8) delivers
-`onConnect`/`onMessage`/`onDisconnect` on IXWebSocket's own background I/O thread(s), while
-every `GameEngine`/`Controller` was built assuming single-threaded access — so every one of
-`main()`'s three handlers, plus the tick loop, takes
-`std::lock_guard<std::mutex> lock(gameMutex)` for its entire body. None of the five classes
-below hold a lock of their own; every method on `RoomManager`/`ConnectionSessions`/`Outbox`
-explicitly documents that it assumes the caller already holds `gameMutex` — the same
-contract, repeated identically, rather than each class inventing its own thread-safety
-story.
+### 5.2 `Server/GameServer.hpp`/`.cpp` — the application layer
 
-### 5.2 `Server/Outbox.hpp`/`.cpp` — the lock-safe send queue
+This is where the real orchestration policy that used to live in `main()` now lives, and
+it's a genuine Ports & Adapters (hexagonal) split, not just a relocation: `WsServerTransport`
+(§5.9) is the **adapter** — it knows only connection ids and raw text, nothing about rooms,
+accounts, or game logic, and stays that way. `RoomManager`/`Outbox`/`ConnectionSessions`/
+`MatchResult`/`ClickRouter` (§5.3-§5.7) are the **domain** — they know nothing about
+WebSockets. `GameServer` is the **application layer**: the one class allowed to know about
+both sides, whose entire job is translating transport events (a connection opening, a
+message arriving, a connection dropping, a tick elapsing) into domain calls.
+
+`run()` registers `onConnect`/`onMessage`/`onDisconnect` on the transport (each a one-line
+lambda delegating to a named method below), calls `server.start()`, then owns the 16ms
+(`kTickMs`) tick loop directly (replacing what used to be `main()`'s own `while(true)`).
+
+**`gameMutex` lives in `main()` but is used entirely here**: `WsServerTransport` (§5.9)
+delivers `onConnect`/`onMessage`/`onDisconnect` on IXWebSocket's own background I/O
+thread(s), while every `GameEngine`/`Controller` was built assuming single-threaded access
+— so every one of `GameServer`'s three transport-callback handlers, plus `tick()`, takes
+`std::lock_guard<std::mutex> lock(gameMutex_)` for its entire body, releasing it before
+flushing `Outbox`. `GameServer` holds no lock of its own beyond that — every method on
+`RoomManager`/`ConnectionSessions`/`Outbox` explicitly documents that it assumes the caller
+already holds `gameMutex`, the same contract, unchanged by this extraction.
+
+Internally, `GameServer` is deliberately **not** one giant method — each handler is broken
+down along the actual logical structure of what it decides:
+
+- `handleConnect(id)` — marks the connection pending, logs it.
+- `handleMessage(id, text)` — decodes the message, then dispatches to exactly one of three
+  mutually exclusive branches (mirroring the original `do { ... break; }` structure, now as
+  an `if`/`else if`/`else`): `handleLogin` (still pending), `handleJoin` (authenticated but
+  not yet routed), or `ClickRouter::handleClick` (already routed — a no-op otherwise).
+- `handleLogin(id, decoded)` — the LOGIN branch: calls `AccountStore::login`, either
+  `sessions.authenticate(...)` + `LOGIN_OK`, or `LOGIN_FAIL`.
+- `handleJoin(id, decoded, username, rating)` — the JOIN branch, itself dispatching to
+  `tryReconnect` (checked first — an active pending-forfeit seat always wins over whatever
+  was actually clicked), then `handleQuickMatch` or `handleRoomJoin` depending on
+  `join->mode`.
+- `tryReconnect`/`handleQuickMatch`/`handleRoomJoin` — exactly the three outcomes JOIN
+  handling always had (reconnection, quick-match pairing, create/join/spectate a named
+  room), each now independently readable instead of three `break`-separated blocks in one
+  function.
+- `handleDisconnect(id)` — starts a forfeit countdown if the disconnect happened mid-game,
+  otherwise drops the seat immediately; unconditionally forgets the connection's routing and
+  session state either way.
+- `tick()` — reaps expired quick-match waiters, then calls `advanceRoom` once per room.
+- `advanceRoom(room, now)` — **one room's** per-tick work: resolve an expired forfeit if any,
+  advance that same room's `GameEngine` by one tick, broadcast `STATE`. Deliberately still
+  one room at a time, inline in `tick()`'s loop, not batched — `resolveForfeitIfExpired`'s
+  `game->stop()` must run before that *same room's* `game->wait(kTickMs)` in the *same*
+  tick, exactly as it did before this class existed (see §5.5's note on why).
+- `registerRoomBroadcasts(room)` — the callback passed to `RoomManager::getOrCreateRoom`'s
+  `onCreated` hook, wiring a fresh room's `GameEngine` event buses to `Outbox`.
+
+### 5.3 `Server/Outbox.hpp`/`.cpp` — the lock-safe send queue
 
 The one piece of real plumbing, and the reason the other four classes below don't need to
 think about networking at all. `enqueue(id, text)`/`enqueueToRoom(room, text)` just buffer a
@@ -852,18 +898,19 @@ itself. Queuing while locked and sending only after unlocking is what makes that
 `gameMutex` — that would be a real, if small, behavioral change, introducing a new
 interleaving possibility that doesn't exist today.)
 
-### 5.3 `Server/ConnectionSessions.hpp`/`.cpp` — the auth state machine
+### 5.4 `Server/ConnectionSessions.hpp`/`.cpp` — the auth state machine
 
 Tracks exactly one thing: a connection's identity transition from *pending* (opened, hasn't
 sent a valid `LOGIN` yet) to *authenticated* (`markPending`/`isPending`/`authenticate`/
 `find`/`forget`). It knows nothing about `AccountStore`, rooms, or the wire protocol —
-`Server/main.cpp`'s `onMessage` still owns calling `AccountStore::login(...)` and sending
-`LOGIN_OK`/`LOGIN_FAIL`; this class only remembers the result so later code (the JOIN-gating
-check, `onDisconnect`) can answer "who is this" without re-deriving it. `forget(id)` erases
-both the pending and authenticated cases in one call, regardless of which (if either)
-applied — deliberately unconditional, so no code path can leave a stale entry behind.
+`GameServer::handleLogin` (§5.2) still owns calling `AccountStore::login(...)` and sending
+`LOGIN_OK`/`LOGIN_FAIL`; this class only remembers the result so later code
+(`GameServer::handleMessage`'s JOIN-gating check, `GameServer::handleDisconnect`) can answer
+"who is this" without re-deriving it. `forget(id)` erases both the pending and authenticated
+cases in one call, regardless of which (if either) applied — deliberately unconditional, so
+no code path can leave a stale entry behind.
 
-### 5.4 `Server/RoomManager.hpp`/`.cpp` — the room/matchmaking authority
+### 5.5 `Server/RoomManager.hpp`/`.cpp` — the room/matchmaking authority
 
 The largest of the five, and the one that grew in stages (originally just room storage +
 quick-match pairing; reconnection matching, connection routing, and the forfeit-grace
@@ -872,49 +919,50 @@ next). It owns:
 
 - **Room storage** — `getOrCreateRoom(key, onCreated)`: returns the existing `Room` for a
   key, or builds one via `Room.hpp`'s free `createRoom(key)` and fires `onCreated` exactly
-  once (`Server/main.cpp`'s own `registerRoomBroadcasts` lambda, wiring a fresh
-  `Room::game`'s event buses to `Outbox`, is the only caller of that hook —
-  `RoomManager` itself has zero awareness that `GameEngine` has event buses at all).
-  `rooms()` exposes the underlying map directly, since `Server/main.cpp`'s tick loop (the
-  `STATE` broadcast) still needs to reach into each `Room`'s contents.
+  once (`GameServer::registerRoomBroadcasts` (§5.2), wiring a fresh `Room::game`'s event
+  buses to `Outbox`, is the only caller of that hook — `RoomManager` itself has zero
+  awareness that `GameEngine` has event buses at all). `rooms()` exposes the underlying map
+  directly, since `GameServer::advanceRoom` (the `STATE` broadcast) still needs to reach
+  into each `Room`'s contents.
 - **Quick-match pairing** — `matchWaiter(rating, eloRange)`/`addWaiter`/`removeWaiter`/
   `reapExpiredWaiters(now)`: a plain `std::vector<WaitingPlayer>`, linear-scanned (handling
   many simultaneous matches at scale is an explicit non-goal for now). `eloRange` is passed
   in per call rather than stored — `RoomManager` owns the waiting-list *mechanics*, not the
-  matchmaking *policy* constant (`kEloMatchRangeElo` stays a `Server/main.cpp` constant).
+  matchmaking *policy* constant (`kEloMatchRangeElo` is a `GameServer.cpp` constant).
 - **Reconnection matching** — `reconnect(username, newConnectionId)`: scans every room for
   a `pendingForfeit` whose disconnected seat's username matches, and if found, re-seats that
   `PlayerSession` under the new connection id (clearing the stale selection via
   `Controller::attachGame` as a documented side effect) and clears `pendingForfeit`.
   Recognized by identity (an already-password-authenticated username), not a client-held
   token or room id — quick-match rooms never expose one anyway. Pure state mutation; the
-  caller (`Server/main.cpp`) still owns sending `WELCOME`/`ROOM`/`PLAYERS`/`RECONNECTED` and
-  logging.
+  caller (`GameServer::tryReconnect`) still owns sending `WELCOME`/`ROOM`/`PLAYERS`/
+  `RECONNECTED` and logging.
 - **Connection routing** — `assignConnectionToRoom`/`isConnectionRouted`/
   `roomForConnection`/`forgetConnectionRoom`: the reverse index (connection id → room key)
   that used to be a bare `main()`-local map. `roomForConnection` returns `Room*` (nullable,
   non-owning) rather than forcing every caller through a second `rooms().at(key)` lookup.
 - **Forfeit-grace lifecycle** — `startForfeitCountdown(room, disconnectedColor, graceMs)`
-  (called from `onDisconnect`) and `resolveForfeitIfExpired(room, now)` (called from the tick
-  loop, **one room at a time, inline in the existing per-room loop** — deliberately *not* a
-  batch-return like `reapExpiredWaiters`, because this room's `game->stop()` must run before
-  this same room's `game->wait(kTickMs)` in the same tick, or `GameEngine` would simulate one
-  extra tick of motion after the deadline already passed). These two are two halves of one
-  state machine over `Room::pendingForfeit`, and were always designed and extracted
-  together, never separately.
+  (called from `GameServer::handleDisconnect`) and `resolveForfeitIfExpired(room, now)`
+  (called from `GameServer::advanceRoom`, **one room at a time, inline in the per-room tick
+  loop** — deliberately *not* a batch-return like `reapExpiredWaiters`, because this room's
+  `game->stop()` must run before this same room's `game->wait(kTickMs)` in the same tick, or
+  `GameEngine` would simulate one extra tick of motion after the deadline already passed).
+  These two are two halves of one state machine over `Room::pendingForfeit`, and were always
+  designed and extracted together, never separately.
 
-### 5.5 `Server/MatchResult.hpp`/`.cpp` — Elo application
+### 5.6 `Server/MatchResult.hpp`/`.cpp` — Elo application
 
 One free function, `applyMatchResult(room, winnerColor, accounts, outbox, logger)`: looks up
 both players' usernames from `room.players` (must still be present — callers run this
 *before* any post-match player/spectator bookkeeping), calls `AccountStore::recordResult`,
-and broadcasts the resulting `RATINGS` message. Called from two places — the room's
-`onGameEnded` bus subscriber (a real king capture) and the tick loop's
-`resolveForfeitIfExpired` result (a disconnect timing out) — which is exactly why it takes
-every dependency as an explicit parameter rather than capturing anything: a plain function,
-not a class, since it has no state of its own to keep between calls.
+and broadcasts the resulting `RATINGS` message. Called from two places —
+`GameServer::registerRoomBroadcasts`'s `onGameEnded` bus subscriber (a real king capture) and
+`GameServer::advanceRoom`'s `resolveForfeitIfExpired` result (a disconnect timing out) —
+which is exactly why it takes every dependency as an explicit parameter rather than
+capturing anything: a plain function, not a class, since it has no state of its own to keep
+between calls.
 
-### 5.6 `Server/ClickRouter.hpp`/`.cpp` — click validation/routing
+### 5.7 `Server/ClickRouter.hpp`/`.cpp` — click validation/routing
 
 One free function, `handleClick(connectionId, decoded, roomManager)` — the last stop for a
 `CLICK` message once a connection is fully joined. Does nothing if: the connection isn't
@@ -924,7 +972,7 @@ single mouse could always move either color) — it's trying to *select* a piece
 its own color. Once a selection is already active, the second click (the real move/jump
 target) passes straight through to `Controller::handleCellClick` without that last check.
 
-### 5.7 `Server/Room.hpp`/`.cpp` and `Server/AccountStore.hpp`/`.cpp` — the data these build on
+### 5.8 `Server/Room.hpp`/`.cpp` and `Server/AccountStore.hpp`/`.cpp` — the data these build on
 
 **`Room.hpp`** (no `.cpp` logic of its own beyond the `createRoom` factory) is the plain-data
 record `RoomManager` owns collections of: `PlayerSession` (username, color, that
@@ -943,12 +991,14 @@ validates an existing one's password, and `recordResult(winner, loser)` applies 
 Elo update (K=32). No internal mutex — relies on SQLite's own serialized threading mode
 instead.
 
-### 5.8 `Network/` — the transport both processes share
+### 5.9 `Network/` — the transport both processes share
 
 **`WsServerTransport.hpp`/`.cpp`** — the one place allowed to touch `ix::` directly on the
 server side; every connection is identified by a small opaque `ConnectionId` string, never
 an `ix::WebSocket*`. `onConnect`/`onMessage`/`onDisconnect` fire on IXWebSocket's own
-background thread(s) — the thread-safety fact that drives `gameMutex`'s existence in §5.1.
+background thread(s) — the thread-safety fact that drives `gameMutex`'s existence in §5.2.
+Deliberately untouched by the `GameServer` extraction (§5.2): it still knows nothing about
+`RoomManager`, `Room`, or any other domain type, only connection ids and raw text.
 
 **`Protocol.hpp`/`.cpp`** — the wire format: one `std::variant<...>` (`DecodedMessage`)
 covering every message either side ever sends (`LoginMessage`, `JoinMessage`,
@@ -1029,9 +1079,9 @@ completely different game, and it keeps `OpenCvView` itself down to orchestratio
    `GameEngine`, and its split between plain-mutex state and queued bus events.
 10. `UI/OpenCV/OpenCvView.cpp` + `BoardRenderer.cpp` — how a `RenderPiece` list actually
     becomes pixels.
-11. `Server/main.cpp` + `RoomManager.hpp`/`.cpp` (§5) — the authoritative backend every
-    client above is actually talking to: one real `GameEngine` per room, reached from
-    `Server/ClickRouter.cpp` rather than a local `Controller` call.
+11. `Server/GameServer.hpp`/`.cpp` (§5.2) + `RoomManager.hpp`/`.cpp` (§5.5) — the
+    authoritative backend every client above is actually talking to: one real `GameEngine`
+    per room, reached from `Server/ClickRouter.cpp` rather than a local `Controller` call.
 
 Section 3 of this document (the traced click) is the fastest way to re-orient yourself in
 the core Logic mechanics any time you get lost in a specific file — but it predates the
