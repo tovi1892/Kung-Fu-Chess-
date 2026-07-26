@@ -1,10 +1,11 @@
+#include <memory>
 #include <mutex>
 
-#include "AccountStore.hpp"
 #include "ConnectionSessions.hpp"
 #include "GameServer.hpp"
 #include "Outbox.hpp"
 #include "RoomManager.hpp"
+#include "SqliteAccountRepository.hpp"
 
 #include "Network/Logger.hpp"
 #include "Network/WsServerTransport.hpp"
@@ -25,7 +26,10 @@ int main() {
     // standalone locals did.
     std::mutex gameMutex;
 
-    AccountStore accounts("accounts.db");
+    // Concrete backing store injected here as the sole IAccountRepository implementation -
+    // swapping it for a different backend means writing a new class and changing only this
+    // line, per IAccountRepository.hpp's rationale.
+    auto accounts = std::make_shared<SqliteAccountRepository>("accounts.db");
     Logger logger("SERVER", "logs/server.log");
 
     // Tracks each connection's pending -> authenticated identity transition - see

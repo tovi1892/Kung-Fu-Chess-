@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AccountStore.hpp"
+#include "IAccountRepository.hpp"
 #include "Outbox.hpp"
 #include "Room.hpp"
 
@@ -17,6 +17,6 @@ namespace kungfu {
 //
 // Not thread-safe on its own: assumes Server/main.cpp's gameMutex is already held by the
 // caller, same contract as RoomManager/Outbox/ConnectionSessions.
-void applyMatchResult(Room& room, PlayerColor winnerColor, AccountStore& accounts, Outbox& outbox, net::Logger& logger);
+void applyMatchResult(Room& room, PlayerColor winnerColor, IAccountRepository& accounts, Outbox& outbox, net::Logger& logger);
 
 }  // namespace kungfu

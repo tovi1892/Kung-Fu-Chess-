@@ -4,7 +4,7 @@
 
 namespace kungfu {
 
-void applyMatchResult(Room& room, PlayerColor winnerColor, AccountStore& accounts, Outbox& outbox, net::Logger& logger) {
+void applyMatchResult(Room& room, PlayerColor winnerColor, IAccountRepository& accounts, Outbox& outbox, net::Logger& logger) {
     std::string winnerName, loserName;
     for (const auto& [id, session] : room.players) {
         (void)id;

@@ -1,11 +1,12 @@
 #pragma once
 
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <string>
 
-#include "AccountStore.hpp"
 #include "ConnectionSessions.hpp"
+#include "IAccountRepository.hpp"
 #include "Outbox.hpp"
 #include "Room.hpp"
 #include "RoomManager.hpp"
@@ -33,7 +34,7 @@ public:
     // port is used only for the startup log line - WsServerTransport itself is already
     // bound to it by the time `server` is passed in here.
     GameServer(net::WsServerTransport& server, RoomManager& roomManager, Outbox& outbox,
-               ConnectionSessions& sessions, AccountStore& accounts, net::Logger& logger,
+               ConnectionSessions& sessions, std::shared_ptr<IAccountRepository> accounts, net::Logger& logger,
                std::mutex& gameMutex, int port);
 
     // Registers onConnect/onMessage/onDisconnect on the transport, starts it listening,
@@ -71,7 +72,7 @@ private:
     RoomManager& roomManager_;
     Outbox& outbox_;
     ConnectionSessions& sessions_;
-    AccountStore& accounts_;
+    std::shared_ptr<IAccountRepository> accounts_;
     net::Logger& logger_;
     std::mutex& gameMutex_;
     int port_;

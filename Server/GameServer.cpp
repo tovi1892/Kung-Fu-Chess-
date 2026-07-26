@@ -35,13 +35,13 @@ std::pair<std::string, std::string> namesOf(const Room& room) {
 }  // namespace
 
 GameServer::GameServer(net::WsServerTransport& server, RoomManager& roomManager, Outbox& outbox,
-                       ConnectionSessions& sessions, AccountStore& accounts, net::Logger& logger,
-                       std::mutex& gameMutex, int port)
+                       ConnectionSessions& sessions, std::shared_ptr<IAccountRepository> accounts,
+                       net::Logger& logger, std::mutex& gameMutex, int port)
     : server_(server),
       roomManager_(roomManager),
       outbox_(outbox),
       sessions_(sessions),
-      accounts_(accounts),
+      accounts_(std::move(accounts)),
       logger_(logger),
       gameMutex_(gameMutex),
       port_(port) {}
@@ -134,7 +134,7 @@ void GameServer::handleLogin(const ConnectionId& id, const net::DecodedMessage& 
         return;
     }
 
-    const auto result = accounts_.login(login->username, login->password);
+    const auto result = accounts_->login(login->username, login->password);
     if (result.success) {
         sessions_.authenticate(id, login->username, result.rating);
         outbox_.enqueue(id, net::encodeLoginOk(result.rating, result.accountCreated));
@@ -271,7 +271,7 @@ void GameServer::advanceRoom(Room& room, std::chrono::steady_clock::time_point n
         outbox_.enqueueToRoom(room, net::encodeForfeit(*winner));
         logger_.log("room \"" + room.key + "\": forfeit resolved, " +
                     (*winner == PlayerColor::White ? "White" : "Black") + " wins");
-        applyMatchResult(room, *winner, accounts_, outbox_, logger_);
+        applyMatchResult(room, *winner, *accounts_, outbox_, logger_);
     }
 
     room.game->wait(kTickMs);  // a no-op until both players have joined and game->start() ran
@@ -306,7 +306,7 @@ void GameServer::registerRoomBroadcasts(Room& room) {
         outbox_.enqueueToRoom(*roomPtr, net::encodeGameEnded(event));
         logger_.log("room \"" + roomPtr->key + "\": game ended, " +
                     (event.winner == PlayerColor::White ? "White" : "Black") + " wins");
-        applyMatchResult(*roomPtr, event.winner, accounts_, outbox_, logger_);
+        applyMatchResult(*roomPtr, event.winner, *accounts_, outbox_, logger_);
     });
 }
 

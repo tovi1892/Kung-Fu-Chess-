@@ -14,8 +14,8 @@ struct AuthenticatedSession {
 };
 
 // Tracks each connection's identity-transition state: pending (opened, not yet logged in)
-// -> authenticated (LOGIN succeeded). Doesn't know about AccountStore, sockets, or the wire
-// protocol - Server/main.cpp still owns calling AccountStore::login() and sending
+// -> authenticated (LOGIN succeeded). Doesn't know about IAccountRepository, sockets, or the
+// wire protocol - Server/main.cpp still owns calling IAccountRepository::login() and sending
 // LOGIN_OK/LOGIN_FAIL; this class only records the resulting state so onMessage/onDisconnect
 // can look up "who is this" without re-deriving it.
 //
@@ -28,7 +28,7 @@ public:
     bool isPending(const std::string& id) const;
 
     // Transitions `id` from pending to authenticated. Only meaningful (and only ever
-    // called) right after a successful AccountStore::login() - main.cpp still owns deciding
+    // called) right after a successful IAccountRepository::login() - main.cpp still owns deciding
     // success/failure and sending the reply either way.
     void authenticate(const std::string& id, const std::string& username, int rating);
 

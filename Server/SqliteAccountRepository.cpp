@@ -1,4 +1,4 @@
-#include "AccountStore.hpp"
+#include "SqliteAccountRepository.hpp"
 
 #include <windows.h>
 
@@ -90,7 +90,7 @@ void setRating(sqlite3* db, const std::string& username, int rating) {
 
 }  // namespace
 
-AccountStore::AccountStore(const std::string& dbPath) {
+SqliteAccountRepository::SqliteAccountRepository(const std::string& dbPath) {
     if (sqlite3_open(dbPath.c_str(), &db_) != SQLITE_OK) {
         throw std::runtime_error("Failed to open SQLite database: " + dbPath);
     }
@@ -104,13 +104,13 @@ AccountStore::AccountStore(const std::string& dbPath) {
     )");
 }
 
-AccountStore::~AccountStore() {
+SqliteAccountRepository::~SqliteAccountRepository() {
     if (db_) {
         sqlite3_close(db_);
     }
 }
 
-LoginResult AccountStore::login(const std::string& username, const std::string& password) {
+LoginResult SqliteAccountRepository::login(const std::string& username, const std::string& password) {
     sqlite3_stmt* stmt = nullptr;
     sqlite3_prepare_v2(db_, "SELECT password_hash, password_salt, rating FROM accounts WHERE username = ?;", -1,
                         &stmt, nullptr);
@@ -152,7 +152,7 @@ LoginResult AccountStore::login(const std::string& username, const std::string& 
     return LoginResult{true, "", kStartingRating, true};
 }
 
-EloUpdateResult AccountStore::recordResult(const std::string& winnerUsername, const std::string& loserUsername) {
+EloUpdateResult SqliteAccountRepository::recordResult(const std::string& winnerUsername, const std::string& loserUsername) {
     execOrThrow(db_, "BEGIN;");
 
     const int winnerRating = getRating(db_, winnerUsername);
