@@ -24,18 +24,24 @@ namespace kungfu {
 // sides - its job is translating transport events (a connection opening, a message
 // arriving, a connection dropping, a tick elapsing) into domain calls, and nothing else.
 //
-// Not thread-safe on its own: every handler locks gameMutex (given at construction) for
-// its own body, then releases it before flushing outbox - same contract every domain class
-// in Server/ already documents. GameServer introduces no new locking of its own; it's
-// exactly the dispatch logic that used to live in Server/main.cpp's lambdas, now named and
-// given a home.
+// Locking (two-tier - see Room.hpp for the full rationale): registryMutex_ (given at
+// construction) protects cross-room state - RoomManager's rooms_ map/connectionRoom_/
+// quickMatchWaiting_, and ConnectionSessions. Each Room's own roomMutex protects that room's
+// players/spectators/pendingForfeit and its game engine. A click takes only its room's own
+// lock (looked up under a brief, separately-released registryMutex_ hold first) so one
+// room's processing never blocks another's; LOGIN/JOIN/disconnect handling hold
+// registryMutex_ for their whole body (rare enough that finer granularity wouldn't help) and
+// additionally take the relevant room's lock, nested, only while touching that room's own
+// fields. Always registryMutex_ first (or independently) - never acquired while already
+// holding a room's lock - to avoid a lock-order deadlock. GameServer flushes outbox_ only
+// after releasing every lock it took.
 class GameServer {
 public:
     // port is used only for the startup log line - WsServerTransport itself is already
     // bound to it by the time `server` is passed in here.
     GameServer(net::WsServerTransport& server, RoomManager& roomManager, Outbox& outbox,
                ConnectionSessions& sessions, std::shared_ptr<IAccountRepository> accounts, net::Logger& logger,
-               std::mutex& gameMutex, int port);
+               std::mutex& registryMutex, int port);
 
     // Registers onConnect/onMessage/onDisconnect on the transport, starts it listening,
     // then blocks forever running the tick loop - the last call main() makes.
@@ -74,7 +80,7 @@ private:
     ConnectionSessions& sessions_;
     std::shared_ptr<IAccountRepository> accounts_;
     net::Logger& logger_;
-    std::mutex& gameMutex_;
+    std::mutex& registryMutex_;
     int port_;
 };
 

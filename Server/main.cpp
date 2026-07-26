@@ -18,13 +18,13 @@ constexpr int kPort = 7777;
 }  // namespace
 
 int main() {
-    // Guards every access to roomManager/sessions/outbox below - IXWebSocket delivers
-    // connect/message/disconnect callbacks on its own background I/O thread(s), while
-    // GameEngine/Controller were built single-threaded. RoomManager/Outbox/
-    // ConnectionSessions/GameServer hold no lock of their own - every call into them
-    // already runs with this mutex held, exactly as direct access to their former
-    // standalone locals did.
-    std::mutex gameMutex;
+    // Guards cross-room state only - RoomManager's rooms_ map/connectionRoom_/
+    // quickMatchWaiting_, and ConnectionSessions. Each Room additionally carries its own
+    // roomMutex (see Room.hpp) protecting that room's players/spectators/pendingForfeit and
+    // game engine, so one room's click processing never blocks another's. RoomManager/
+    // ConnectionSessions/GameServer hold no lock of their own - every call into them already
+    // runs with the appropriate lock(s) held, per GameServer.hpp's locking contract.
+    std::mutex registryMutex;
 
     // Concrete backing store injected here as the sole IAccountRepository implementation -
     // swapping it for a different backend means writing a new class and changing only this
@@ -42,12 +42,13 @@ int main() {
 
     WsServerTransport server(kPort);
 
-    // Buffers every message queued while gameMutex is held, actually sent only once
-    // outbox.flush() is called after it's released - see Outbox.hpp for why.
-    Outbox outbox(server, gameMutex);
+    // Buffers every message queued while some other lock is held, actually sent only once
+    // outbox.flush() is called after it's released - see Outbox.hpp for why it now owns a
+    // private mutex of its own rather than sharing registryMutex.
+    Outbox outbox(server);
 
     // The application layer: translates transport events into domain calls - see
     // GameServer.hpp for the full Ports & Adapters rationale.
-    GameServer gameServer(server, roomManager, outbox, sessions, accounts, logger, gameMutex, kPort);
+    GameServer gameServer(server, roomManager, outbox, sessions, accounts, logger, registryMutex, kPort);
     gameServer.run();
 }

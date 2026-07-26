@@ -67,8 +67,10 @@ std::vector<WaitingPlayer> RoomManager::reapExpiredWaiters(std::chrono::steady_c
 std::optional<RoomManager::ReconnectResult> RoomManager::reconnect(const std::string& username,
                                                                     const std::string& newConnectionId) {
     for (auto& [roomKey, roomPtr] : rooms_) {
+        std::unique_lock<std::mutex> lock(roomPtr->roomMutex);
+
         if (!roomPtr->pendingForfeit.has_value()) {
-            continue;
+            continue;  // lock released here - next iteration takes a fresh room's lock
         }
         const auto sessionIt = std::find_if(roomPtr->players.begin(), roomPtr->players.end(), [&](const auto& entry) {
             return entry.second.username == username &&
@@ -87,7 +89,7 @@ std::optional<RoomManager::ReconnectResult> RoomManager::reconnect(const std::st
         roomPtr->players[newConnectionId] = std::move(session);
         roomPtr->pendingForfeit.reset();
 
-        return ReconnectResult{roomPtr.get(), reconnectedColor};
+        return ReconnectResult{roomPtr.get(), reconnectedColor, std::move(lock)};
     }
     return std::nullopt;
 }

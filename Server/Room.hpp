@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -39,6 +40,15 @@ struct PendingForfeit {
 // spectators. Connection ids are plain strings (matching
 // WsServerTransport::ConnectionId) rather than including Network/ here - this file stays
 // pure Logic-composition, with zero networking awareness.
+//
+// roomMutex protects this room's own fields (players/spectators/pendingForfeit) and,
+// transitively, its game's engine state - GameServer holds it for the duration of any click,
+// tick, join, or disconnect handling that touches this specific room. It is separate from
+// and independent of Server/main.cpp's registry mutex, which protects only cross-room state
+// (RoomManager's rooms_ map/connectionRoom_/quickMatchWaiting_, ConnectionSessions) - so
+// processing a click for one room never blocks a click for another. Wherever both are
+// needed, the registry mutex is always acquired first (or independently - never after a
+// room's own mutex is already held), to avoid a lock-order deadlock.
 struct Room {
     std::string key;
     std::shared_ptr<Board> board;
@@ -47,6 +57,7 @@ struct Room {
     std::unordered_map<std::string, PlayerSession> players;  // connection id -> session, max 2
     std::unordered_set<std::string> spectators;               // connection id, read-only
     std::optional<PendingForfeit> pendingForfeit;
+    std::mutex roomMutex;
 };
 
 // Builds a fresh Room with a new starting board/RuleEngine/GameEngine - no players yet.

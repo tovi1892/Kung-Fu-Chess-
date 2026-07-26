@@ -11,34 +11,39 @@
 
 namespace kungfu {
 
-// Buffers messages queued while Server/main.cpp's gameMutex is held, sending them only
-// once flush() is called after the caller has released that lock - preserves the exact
-// reasoning already documented in main.cpp: sending directly while holding gameMutex risked
-// a self-deadlock (ix::WebSocket::send() can synchronously invoke this transport's Close
-// callback on the same thread, which tries to relock gameMutex inside onDisconnect).
+// Buffers messages queued while some other lock (the registry mutex, or a specific room's
+// roomMutex) is held, sending them only once flush() is called - preserves the reasoning
+// already documented for those locks: sending directly while holding one risked a
+// self-deadlock (ix::WebSocket::send() can synchronously invoke this transport's Close
+// callback on the same thread, which tries to relock the very mutex the send happened
+// under).
 //
-// Not thread-safe on its own: enqueue()/enqueueToRoom() assume gameMutex is already held by
-// the caller (same contract RoomManager already established). flush() assumes the OPPOSITE
-// (gameMutex NOT held) and briefly re-locks the exact same mutex instance given at
-// construction just long enough to swap out whatever's queued, then sends with no lock held
-// at all. Deliberately reuses main()'s one gameMutex rather than owning a private mutex of
-// its own - a dedicated mutex was considered and explicitly rejected, since it would be a
-// real (if small) behavioral change this refactor isn't meant to make.
+// Owns a small private mutex of its own, rather than reusing any single caller-held lock -
+// necessary now that callers hold one of several different mutexes (the registry mutex for
+// cross-room operations, or any one of many rooms' own roomMutex for room-scoped ones):
+// enqueue()/enqueueToRoom() can be called concurrently from different rooms' independently-
+// held locks, so pending_ needs its own synchronization independent of all of them. The
+// critical section is just a vector swap - never held while actually sending - so this adds
+// no meaningful contention of its own.
 class Outbox {
 public:
-    Outbox(net::WsServerTransport& server, std::mutex& gameMutex) : server_(server), gameMutex_(gameMutex) {}
+    explicit Outbox(net::WsServerTransport& server) : server_(server) {}
 
-    // Assumes gameMutex is already held by the caller - just records intent, sends nothing.
+    // Safe to call from any thread, under whatever lock (if any) that thread already holds -
+    // just records intent, sends nothing.
     void enqueue(const net::WsServerTransport::ConnectionId& id, const std::string& text);
+
+    // Reads room.players/room.spectators - the caller must already hold room.roomMutex
+    // (Outbox has no way to know which Room's lock that is, so it can't take it itself).
     void enqueueToRoom(const Room& room, const std::string& text);
 
-    // Called with gameMutex NOT held - briefly re-locks it just long enough to swap out
-    // whatever was queued, then sends every message with no lock held at all.
+    // Briefly locks this Outbox's own mutex just long enough to swap out whatever was
+    // queued, then sends every message with no lock held at all.
     void flush();
 
 private:
     net::WsServerTransport& server_;
-    std::mutex& gameMutex_;
+    std::mutex mutex_;
     std::vector<std::pair<net::WsServerTransport::ConnectionId, std::string>> pending_;
 };
 

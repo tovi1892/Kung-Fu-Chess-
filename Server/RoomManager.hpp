@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -26,10 +27,15 @@ struct WaitingPlayer {
 // waiters - it does not touch sockets, parse protocol messages, send anything, or decide
 // what to do with a match once found or a room once created (that stays in Server/main.cpp).
 //
-// Not thread-safe on its own: every method assumes the caller already holds
-// Server/main.cpp's gameMutex, exactly as direct access to the old rooms_/
-// quickMatchWaiting_ locals did before this class existed - it introduces no locking of its
-// own and changes no ordering guarantees.
+// Locking contract (two-tier, since GameServer moved to per-room locking): every method here
+// assumes the caller already holds Server/main.cpp's registry mutex, which protects rooms_/
+// connectionRoom_/quickMatchWaiting_ - exactly as it assumed for the old single gameMutex_
+// before per-room locks existed. Individual Room fields (players/spectators/pendingForfeit)
+// are instead protected by that specific Room's own roomMutex (see Room.hpp): startForfeitCountdown
+// and resolveForfeitIfExpired assume the caller already holds the given room's roomMutex (they
+// operate on one already-identified room, same as GameServer::advanceRoom already holding it);
+// reconnect() is the exception - it has to scan every room to find a match, so it manages
+// each candidate room's roomMutex itself internally (see its own comment below).
 class RoomManager {
 public:
     // Returns the existing room for `key`, or creates+stores a fresh one (via Room.hpp's
@@ -64,22 +70,34 @@ public:
     // still owns sending a no-opponent-found reply and logging for each.
     std::vector<WaitingPlayer> reapExpiredWaiters(std::chrono::steady_clock::time_point now);
 
-    // Result of a successful reconnect() match: which room the seat lives in, and which
-    // color was reclaimed. `room` is a raw pointer (not a reference) only because
-    // std::optional<T&> isn't available pre-C++26 - never null when the optional itself
-    // holds a value.
+    // Result of a successful reconnect() match: which room the seat lives in, which color
+    // was reclaimed, and a lock already held on that room's roomMutex. `room` is a raw
+    // pointer (not a reference) only because std::optional<T&> isn't available pre-C++26 -
+    // never null when the optional itself holds a value. `lock` is returned still locked
+    // deliberately: the caller (GameServer::tryReconnect) still needs to read room.players
+    // to build its WELCOME/PLAYERS reply and enqueueToRoom the RECONNECTED broadcast, and
+    // both require roomMutex to already be held (same rule Outbox::enqueueToRoom documents)
+    // - letting the lock outlive this call, via std::unique_lock rather than lock_guard, is
+    // what makes that possible without a second, redundant lock/unlock. Released
+    // automatically when the caller lets it go out of scope.
     struct ReconnectResult {
         Room* room;
         PlayerColor color;
+        std::unique_lock<std::mutex> lock;
     };
 
     // Scans every room for one with a pending forfeit whose disconnected seat's username
     // matches `username`; if found, reseats that PlayerSession under `newConnectionId`
     // (moving it out of its old connection-id key), clears the pending forfeit, and returns
-    // the room + reclaimed color. Returns nullopt if no room currently has a matching
-    // pending-forfeit seat. Pure state mutation only - never sends anything (the caller
-    // still owns queueSend/queueToRoom/logging for whatever this returns), same split as
-    // matchWaiter()/addWaiter() above.
+    // the room + reclaimed color (with that room's roomMutex still held - see ReconnectResult).
+    // Returns nullopt if no room currently has a matching pending-forfeit seat. Pure state
+    // mutation only - never sends anything (the caller still owns queueSend/queueToRoom/
+    // logging for whatever this returns), same split as matchWaiter()/addWaiter() above.
+    //
+    // Locks each candidate room's roomMutex in turn for just long enough to check (and,
+    // for the match, mutate) it - never more than one room's lock held at a time during the
+    // scan, so this can't deadlock against GameServer's tick() locking rooms one at a time
+    // in whatever order they happen to iterate in.
     std::optional<ReconnectResult> reconnect(const std::string& username, const std::string& newConnectionId);
 
     // Records that `connectionId` is now routed to (seated in or spectating) room
@@ -101,7 +119,7 @@ public:
     void forgetConnectionRoom(const std::string& connectionId);
 
     // Starts a forfeit grace period for `disconnectedColor` in `room`, expiring `graceMs`
-    // from now.
+    // from now. Assumes the caller already holds room.roomMutex.
     void startForfeitCountdown(Room& room, PlayerColor disconnectedColor, int graceMs);
 
     // If `room`'s pendingForfeit has expired as of `now`, resolves it: computes the winner,
@@ -117,7 +135,9 @@ public:
     // preserving the exact same-tick, same-room stop()-before-wait() ordering the original
     // inline code relied on (a resolved forfeit's game->stop() must run before this tick's
     // wait() for the same room, or GameEngine would advance one extra tick of simulation
-    // after the deadline passed).
+    // after the deadline passed). Assumes the caller already holds room.roomMutex for the
+    // whole advance (GameServer::advanceRoom does, across both this call and the wait() that
+    // follows it).
     std::optional<PlayerColor> resolveForfeitIfExpired(Room& room, std::chrono::steady_clock::time_point now);
 
 private:

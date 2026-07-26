@@ -6,13 +6,7 @@
 
 namespace kungfu {
 
-void handleClick(const std::string& connectionId, const net::DecodedMessage& decoded, RoomManager& roomManager) {
-    Room* roomPtr = roomManager.roomForConnection(connectionId);
-    if (!roomPtr) {
-        return;  // a rejected/unrecognized connection - ignore whatever it sends
-    }
-    Room& room = *roomPtr;
-
+void handleClick(Room& room, const std::string& connectionId, const net::DecodedMessage& decoded) {
     const auto sessionIt = room.players.find(connectionId);
     if (sessionIt == room.players.end()) {
         return;  // a spectator (or a forfeited match's former players) - clicks do nothing
