@@ -1,0 +1,47 @@
+# Multi-stage Dockerfile for C++ Kung-Fu Chess Game Server
+
+# Stage 1: Build Environment
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build tools and C++ libraries
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    ninja-build \
+    g++ \
+    libpqxx-dev \
+    libhiredis-dev \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy project source code
+COPY . .
+
+# Build C++ project with Ninja
+RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --config Release
+
+# Stage 2: Minimal Production Runtime
+FROM ubuntu:22.04 AS runner
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y \
+    libpqxx-7.2 \
+    libhiredis0.14 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy compiled executable from builder stage
+COPY --from=builder /app/build/kungfu_server /app/kungfu_server
+
+EXPOSE 8080
+
+CMD ["/app/kungfu_server"]

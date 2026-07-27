@@ -1,0 +1,7 @@
+build/
+build-verify/
+.git/
+node_modules/
+dist/
+*.db
+*.log
