@@ -146,21 +146,30 @@ if(BUILD_APP)
     target_link_libraries(kungfu_ui PUBLIC winmm)
 endif()
 
-# --- Executables -------------------------------------------------------------
-# Server: owns the real GameEngine (one per room), no OpenCV involved at all.
+# --- kungfu_accounts: account storage/auth, shared by kungfu_server and kungfu_api_gateway --
+# Carved out of Server/*.cpp (files stay physically in Server/ - every existing #include in
+# GameServer.cpp/MatchResult.cpp/main.cpp stays valid unchanged) so the REST API Gateway can
+# link IAccountRepository/PostgresAccountRepository/EnvConfig without duplicating them.
 # Exactly one of SqliteAccountRepository.cpp/PostgresAccountRepository.cpp is compiled,
 # matching which one main.cpp's #ifdef KUNGFU_ENABLE_POSTGRES actually instantiates - not
 # just unlinked, genuinely never attempted, since each pulls in headers the other platform
 # doesn't have at all (bcrypt.h/windows.h are Windows-only; pqxx/openssl needs libpqxx/
 # OpenSSL installed, which the native Windows dev build never requires).
-file(GLOB_RECURSE SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/*.cpp")
+set(ACCOUNTS_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/Server/EnvConfig.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Server/SqliteAccountRepository.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Server/PostgresAccountRepository.cpp
+)
 if(KUNGFU_ENABLE_POSTGRES)
-    list(REMOVE_ITEM SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/SqliteAccountRepository.cpp")
+    list(REMOVE_ITEM ACCOUNTS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/SqliteAccountRepository.cpp")
 else()
-    list(REMOVE_ITEM SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/PostgresAccountRepository.cpp")
+    list(REMOVE_ITEM ACCOUNTS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/PostgresAccountRepository.cpp")
 endif()
-add_executable(kungfu_server ${SERVER_SOURCES})
-target_link_libraries(kungfu_server PRIVATE kungfu_logic kungfu_network)
+add_library(kungfu_accounts STATIC ${ACCOUNTS_SOURCES})
+target_include_directories(kungfu_accounts PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/Server
+)
 
 if(KUNGFU_ENABLE_POSTGRES)
     # Ubuntu 22.04's libpqxx-dev resolves to libpqxx 6.4.5 (confirmed from an actual
@@ -171,21 +180,32 @@ if(KUNGFU_ENABLE_POSTGRES)
     # in libpq's flags/libs, no separate find_package(PostgreSQL) needed.
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(PQXX REQUIRED IMPORTED_TARGET libpqxx)
-    target_link_libraries(kungfu_server PRIVATE PkgConfig::PQXX)
-    target_compile_definitions(kungfu_server PRIVATE KUNGFU_ENABLE_POSTGRES)
+    target_link_libraries(kungfu_accounts PUBLIC PkgConfig::PQXX)
+    target_compile_definitions(kungfu_accounts PUBLIC KUNGFU_ENABLE_POSTGRES)
 
     # PostgresAccountRepository needs a portable (Linux-buildable) PBKDF2 implementation -
     # SqliteAccountRepository's Windows-CNG one (bcrypt.h) doesn't compile outside Windows.
     # OpenSSL's PKCS5_PBKDF2_HMAC is the standard choice here rather than hand-rolling PBKDF2/
     # HMAC/SHA-256, which would be a real security risk to get subtly wrong.
     find_package(OpenSSL REQUIRED)
-    target_link_libraries(kungfu_server PRIVATE OpenSSL::Crypto)
+    target_link_libraries(kungfu_accounts PUBLIC OpenSSL::Crypto)
 else()
     # sqlite3 (SqliteAccountRepository) and bcrypt (Windows CNG, password hashing) - both
     # Windows/native-only, never linked (and, per the exclusion above, never even compiled
     # against) on the Postgres/Linux path.
-    target_link_libraries(kungfu_server PRIVATE sqlite3 bcrypt)
+    target_link_libraries(kungfu_accounts PUBLIC sqlite3 bcrypt)
 endif()
+
+# --- Executables -------------------------------------------------------------
+# Server: owns the real GameEngine (one per room), no OpenCV involved at all.
+file(GLOB_RECURSE SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/*.cpp")
+list(REMOVE_ITEM SERVER_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/Server/EnvConfig.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Server/SqliteAccountRepository.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Server/PostgresAccountRepository.cpp"
+)
+add_executable(kungfu_server ${SERVER_SOURCES})
+target_link_libraries(kungfu_server PRIVATE kungfu_logic kungfu_network kungfu_accounts)
 
 # Client: owns the OpenCV window, talks to the server instead of owning GameEngine.
 if(BUILD_APP)
