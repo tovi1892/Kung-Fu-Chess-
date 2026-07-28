@@ -144,4 +144,86 @@ EloUpdateResult PostgresAccountRepository::recordResult(const std::string& winne
     return EloUpdateResult{newWinnerRating, newLoserRating};
 }
 
+RegisterResult PostgresAccountRepository::registerAccount(const std::string& username, const std::string& password) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    pqxx::work txn(*conn_);
+    const auto existing = txn.exec_params("SELECT 1 FROM users WHERE username = $1;", username);
+    if (!existing.empty()) {
+        return RegisterResult{false, "username_taken", 0};
+    }
+
+    const auto salt = randomBytes(kSaltLength);
+    const auto hash = derivePbkdf2(password, salt);
+    try {
+        txn.exec_params(
+            "INSERT INTO users (username, password_hash, password_salt, elo_rating) VALUES ($1, $2, $3, $4);",
+            username, toHex(hash), toHex(salt), kStartingRating);
+        txn.commit();
+    } catch (const pqxx::unique_violation&) {
+        // Defense-in-depth against a concurrent registration of the same username landing
+        // between the SELECT above and this INSERT - the per-instance mutex_ already
+        // serializes every call into this one object today (so this should be unreachable in
+        // practice), but the DB's own UNIQUE constraint is the theoretically-correct
+        // backstop, not something to rely on the mutex alone for long-term.
+        return RegisterResult{false, "username_taken", 0};
+    }
+
+    return RegisterResult{true, "", kStartingRating};
+}
+
+StrictLoginResult PostgresAccountRepository::loginStrict(const std::string& username, const std::string& password) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    pqxx::work txn(*conn_);
+    const auto result = txn.exec_params(
+        "SELECT password_hash, password_salt, elo_rating, wins, losses FROM users WHERE username = $1;", username);
+    txn.commit();
+
+    if (result.empty()) {
+        return StrictLoginResult{false, "not_found", 0, 0, 0};
+    }
+
+    const auto row = result[0];
+    const auto storedHash = fromHex(row[0].as<std::string>());
+    const auto salt = fromHex(row[1].as<std::string>());
+    if (derivePbkdf2(password, salt) != storedHash) {
+        return StrictLoginResult{false, "bad_password", 0, 0, 0};
+    }
+
+    return StrictLoginResult{true, "", row[2].as<int>(), row[3].as<int>(), row[4].as<int>()};
+}
+
+std::optional<UserProfile> PostgresAccountRepository::getProfile(const std::string& username) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    pqxx::work txn(*conn_);
+    const auto result =
+        txn.exec_params("SELECT elo_rating, wins, losses FROM users WHERE username = $1;", username);
+    txn.commit();
+
+    if (result.empty()) {
+        return std::nullopt;
+    }
+    const auto row = result[0];
+    return UserProfile{username, row[0].as<int>(), row[1].as<int>(), row[2].as<int>()};
+}
+
+std::vector<UserProfile> PostgresAccountRepository::getLeaderboard(int limit) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    pqxx::work txn(*conn_);
+    const auto result = txn.exec_params(
+        "SELECT username, elo_rating, wins, losses FROM users ORDER BY elo_rating DESC LIMIT $1;", limit);
+    txn.commit();
+
+    std::vector<UserProfile> leaderboard;
+    leaderboard.reserve(result.size());
+    for (const auto& row : result) {
+        leaderboard.push_back(
+            UserProfile{row[0].as<std::string>(), row[1].as<int>(), row[2].as<int>(), row[3].as<int>()});
+    }
+    return leaderboard;
+}
+
 }  // namespace kungfu

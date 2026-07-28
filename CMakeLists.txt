@@ -65,6 +65,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ixwebsocket)
 
+# nlohmann/json: single-header JSON for the REST API Gateway (ApiGateway/) - fetched the same
+# way as Catch2/IXWebSocket above (an upstream-authoritative GitHub release tag), not
+# hand-rolled - this project's existing wire protocol (Network/Protocol.hpp) is hand-rolled
+# space-delimited text specifically because it's simple and fixed-shape; JSON request/response
+# bodies with escaping/nesting concerns cross the bar where a well-trusted library beats
+# rolling it yourself.
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 # SQLite: account storage (Server/AccountStore.cpp) for Phase 4. Fetched as the official
 # amalgamation (a single sqlite3.c/sqlite3.h pair) straight from sqlite.org - not a
 # third-party CMake-wrapped mirror, keeping supply-chain trust anchored to the same
@@ -235,6 +249,22 @@ if(KUNGFU_ENABLE_REDIS)
     pkg_check_modules(HIREDIS REQUIRED IMPORTED_TARGET hiredis)
     target_link_libraries(kungfu_gateway PRIVATE PkgConfig::HIREDIS)
     target_compile_definitions(kungfu_gateway PRIVATE KUNGFU_ENABLE_REDIS)
+endif()
+
+# API Gateway: stateless REST facade (login/register/profile/leaderboard) over
+# PostgresAccountRepository, decoupled from the realtime WS path - see
+# ApiGateway/ApiGateway.hpp for the full rationale and Server_Design.md's target architecture.
+# Postgres-only by design (reuses KUNGFU_ENABLE_POSTGRES rather than introducing a new
+# option) - there's no SQLite variant of this service, so it simply doesn't exist as a build
+# target at all when KUNGFU_ENABLE_POSTGRES is OFF, same as PostgresAccountRepository.cpp
+# itself already is.
+if(KUNGFU_ENABLE_POSTGRES)
+    file(GLOB_RECURSE API_GATEWAY_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/ApiGateway/*.cpp")
+    add_executable(kungfu_api_gateway ${API_GATEWAY_SOURCES})
+    target_link_libraries(kungfu_api_gateway PRIVATE kungfu_accounts kungfu_network nlohmann_json::nlohmann_json)
+    if(WIN32)
+        target_link_libraries(kungfu_api_gateway PRIVATE ws2_32)
+    endif()
 endif()
 
 # הגדרת טסטים (Integration)

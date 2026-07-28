@@ -31,5 +31,6 @@ CREATE TABLE IF NOT EXISTS matches (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_elo_rating ON users(elo_rating DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_white_user ON matches(white_user_id);
 CREATE INDEX IF NOT EXISTS idx_matches_black_user ON matches(black_user_id);

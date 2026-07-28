@@ -2,7 +2,9 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "IAccountRepository.hpp"
 
@@ -15,6 +17,32 @@
 #include <pqxx/pqxx>
 
 namespace kungfu {
+
+// Result shapes for the REST-API-Gateway-only methods below - kept local to this class
+// rather than added to IAccountRepository.hpp, since GameServer/MatchResult (that shared
+// interface's only other consumers) never call them; only ApiGateway/ApiGateway.cpp does,
+// holding a PostgresAccountRepository concretely rather than through the interface.
+
+struct RegisterResult {
+    bool success = false;
+    std::string failureReason;  // "username_taken" if !success
+    int rating = 0;              // meaningful only if success
+};
+
+struct StrictLoginResult {
+    bool success = false;
+    std::string failureReason;  // "not_found" or "bad_password" if !success
+    int rating = 0;
+    int wins = 0;
+    int losses = 0;
+};
+
+struct UserProfile {
+    std::string username;
+    int rating = 0;
+    int wins = 0;
+    int losses = 0;
+};
 
 // PostgreSQL-backed account storage - implements IAccountRepository identically to
 // SqliteAccountRepository (same PBKDF2-HMAC-SHA256 scheme via OpenSSL rather than Windows
@@ -44,6 +72,22 @@ public:
 
     LoginResult login(const std::string& username, const std::string& password) override;
     EloUpdateResult recordResult(const std::string& winnerUsername, const std::string& loserUsername) override;
+
+    // Strict registration for the REST API Gateway's POST /register - fails with
+    // "username_taken" if the username already exists, unlike login()'s lenient
+    // auto-register (which Server/GameServer.cpp's WS LOGIN flow still relies on unchanged).
+    RegisterResult registerAccount(const std::string& username, const std::string& password);
+
+    // Strict login for the REST API Gateway's POST /login - "not_found" if the username
+    // doesn't exist (login() instead auto-registers it), "bad_password" if it exists but the
+    // password doesn't match.
+    StrictLoginResult loginStrict(const std::string& username, const std::string& password);
+
+    std::optional<UserProfile> getProfile(const std::string& username);
+
+    // Top `limit` accounts by elo_rating DESC. Caller is responsible for clamping limit to a
+    // sane range before calling - this method trusts its argument.
+    std::vector<UserProfile> getLeaderboard(int limit);
 
 private:
     std::unique_ptr<pqxx::connection> conn_;

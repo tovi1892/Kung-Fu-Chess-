@@ -100,5 +100,28 @@ services:
       redis:
         condition: service_healthy
 
+  # 6. Stateless REST API Gateway - login/register/profile/leaderboard over HTTP, decoupled
+  # from the realtime WS path (see ApiGateway/ApiGateway.hpp). Shares the same Postgres
+  # account DB as the game-server shards; has no relationship to the WS gateway service
+  # above (no session-token handoff between them yet - see ApiGateway.hpp's comment).
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.apigateway
+    container_name: kungfu_api_gateway
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=kungfu_admin
+      - DB_PASSWORD=secretpassword
+      - DB_NAME=kungfu_chess
+      - API_GATEWAY_PORT=8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:
