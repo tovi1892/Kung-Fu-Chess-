@@ -19,7 +19,14 @@ std::string timestampNow() {
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
     std::tm tmBuf{};
-    localtime_s(&tmBuf, &nowTimeT);  // thread-safe variant - this project is Windows-only already
+    // Thread-safe variant - the two platforms' equivalents disagree on both name and
+    // argument order (Windows CRT vs. POSIX), needed now that Server/ also compiles inside
+    // Dockerfile.server's Linux container, not just this project's native Windows build.
+#ifdef _WIN32
+    localtime_s(&tmBuf, &nowTimeT);
+#else
+    localtime_r(&nowTimeT, &tmBuf);
+#endif
 
     std::ostringstream out;
     out << std::put_time(&tmBuf, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3) << ms.count();

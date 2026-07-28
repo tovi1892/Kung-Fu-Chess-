@@ -1,0 +1,21 @@
+# Non-secret configuration for the game-server Deployment - mirrors docker-compose.yml's
+# environment block for the same values. DB_PASSWORD lives in secret.yaml instead, never
+# here.
+#
+# DB_HOST: no Postgres Deployment/Service is included in this k8s/ folder - Server_Design.md
+# recommends a managed Postgres (AWS Aurora / GCP Cloud SQL), not a self-hosted in-cluster
+# pod, so this is a placeholder for that managed instance's endpoint. Point it at your actual
+# managed database (or a self-hosted postgres Service's DNS name, e.g.
+# "kungfu-postgres.default.svc.cluster.local", if you do self-host it) before applying this.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kungfu-gameserver-config
+  labels:
+    app: kungfu-gameserver
+data:
+  DB_HOST: "REPLACE_WITH_YOUR_POSTGRES_HOST"
+  DB_PORT: "5432"
+  DB_USER: "kungfu_admin"
+  DB_NAME: "kungfu_chess"
+  PORT: "8080"

@@ -1,9 +1,16 @@
 -- Initial PostgreSQL Schema for Kung-Fu Chess Cloud Migration
 
+-- password_hash/password_salt store the same PBKDF2-HMAC-SHA256 (100000 iterations) scheme
+-- SqliteAccountRepository already uses, hex-encoded as TEXT rather than BYTEA -
+-- PostgresAccountRepository.cpp encodes/decodes the hex itself, using only libpqxx's plain
+-- std::string parameter/result path (the most stable part of its API across versions,
+-- deliberately avoided the binary-column API here since this couldn't be compile-tested
+-- against a real libpqxx locally - see Server/PostgresAccountRepository.cpp).
 CREATE TABLE IF NOT EXISTS users (
     user_id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash TEXT NOT NULL,
+    password_salt TEXT NOT NULL,
     elo_rating INT DEFAULT 1200,
     wins INT DEFAULT 0,
     losses INT DEFAULT 0,

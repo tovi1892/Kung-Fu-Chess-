@@ -1,0 +1,22 @@
+# LoadBalancer so real clients outside the cluster can reach the WebSocket port directly -
+# swap `type` to NodePort or ClusterIP (behind your own Ingress/gateway) depending on your
+# cluster's actual entry-point setup. sessionAffinity: ClientIP is a partial mitigation for
+# the multi-replica room-routing gap described in gameserver-deployment.yaml - keeps one
+# client's reconnects on the same pod, but does not make replicas > 1 safe for matchmaking
+# in general (see that file's comment).
+apiVersion: v1
+kind: Service
+metadata:
+  name: kungfu-gameserver
+  labels:
+    app: kungfu-gameserver
+spec:
+  type: LoadBalancer
+  selector:
+    app: kungfu-gameserver
+  sessionAffinity: ClientIP
+  ports:
+    - name: websocket
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

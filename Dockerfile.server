@@ -5,14 +5,19 @@ FROM ubuntu:22.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build tools and C++ libraries
+# Install build tools and C++ libraries. ca-certificates is required here (not just in the
+# runner stage below) because CMake's FetchContent does a real `git clone` over https:// for
+# ixwebsocket/Catch2/sqlite3 during the build step further down - without it, git can't
+# verify any HTTPS certificate at all and every clone fails with "server certificate
+# verification failed: CAfile: none".
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     ninja-build \
     g++ \
     libpqxx-dev \
-    libhiredis-dev \
+    libssl-dev \
+    ca-certificates \
     git \
     && rm -rf /var/lib/apt/lists/*
 
@@ -21,20 +26,38 @@ WORKDIR /app
 # Copy project source code
 COPY . .
 
-# Build C++ project with Ninja
+# This build environment's network sits behind something that breaks HTTPS certificate
+# verification for plain `git clone` (confirmed: apt-get itself installs ca-certificates
+# fine, and the clone still fails with "CAfile: none") - the exact same class of problem
+# CMakeLists.txt's sqlite3 FetchContent already works around for CMake's own downloader
+# (see its TLS_VERIFY FALSE comment). ixwebsocket's FetchContent_Declare is pinned to an
+# exact GIT_TAG, so disabling git's verification for just this throwaway builder stage - never
+# the runtime image - trades off the same narrow amount of trust that comment already accepts.
+RUN git config --global http.sslVerify false
+
+# Build C++ project with Ninja. KUNGFU_ENABLE_POSTGRES turns on PostgresAccountRepository
+# (needs libpqxx-dev above) and disables BUILD_TESTS/the OpenCV-dependent UI/app targets -
+# this container only ever builds and runs kungfu_server.
 RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    && cmake --build build --config Release
+    -DKUNGFU_ENABLE_POSTGRES=ON -DBUILD_TESTS=OFF -DBUILD_APP=OFF \
+    && cmake --build build --config Release --target kungfu_server
 
 # Stage 2: Minimal Production Runtime
 FROM ubuntu:22.04 AS runner
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install runtime dependencies only
+# Install runtime dependencies. Deliberately reinstalling libpqxx-dev/libssl-dev here
+# rather than guessing the matching versioned runtime-only package names (e.g.
+# libpqxx-6.4/libssl3) - those shift between Ubuntu releases and this couldn't be verified
+# against a real Ubuntu 22.04 apt index while writing it; the -dev packages always resolve
+# and pull in whatever runtime .so they need, at the cost of a larger image than a minimal
+# runtime-only install would be.
 RUN apt-get update && apt-get install -y \
-    libpqxx-7.2 \
-    libhiredis0.14 \
+    libpqxx-dev \
+    libssl-dev \
     ca-certificates \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -43,5 +66,11 @@ WORKDIR /app
 COPY --from=builder /app/build/kungfu_server /app/kungfu_server
 
 EXPOSE 8080
+
+# kungfu_server speaks raw WebSocket, not HTTP - a plain TCP connect (via netcat, installed
+# above) is the simplest thing that actually proves the process is up and accepting
+# connections, without needing a full WS handshake just for a health probe.
+HEALTHCHECK --interval=5s --timeout=5s --retries=5 --start-period=5s \
+    CMD nc -z localhost 8080 || exit 1
 
 CMD ["/app/kungfu_server"]

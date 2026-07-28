@@ -1,6 +1,4 @@
 # Docker Compose setup for local cloud-ready development environment
-version: '3.8'
-
 services:
   # 1. Relational Database for User Profiles, Auth & Historic Logs
   postgres:
@@ -22,23 +20,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # 2. In-Memory Cache & Session / Room Routing Store
-  redis:
-    image: redis:7-alpine
-    container_name: kungfu_redis
-    restart: always
-    ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # 3. Kung-Fu Chess C++ Game Server Pod (Containerized)
+  # 2. Kung-Fu Chess C++ Game Server Shard (Containerized) - the authoritative GameEngine.
   game-server:
     build:
       context: .
@@ -53,15 +35,10 @@ services:
       - DB_USER=kungfu_admin
       - DB_PASSWORD=secretpassword
       - DB_NAME=kungfu_chess
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - PORT=8080
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
 
 volumes:
   postgres_data:
-  redis_data:

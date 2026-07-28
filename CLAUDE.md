@@ -7,8 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Kung Fu Chess: a real-time chess variant in C++17. There are no turns — either side can act on any piece at any
 moment, but moves aren't instant: a move takes `distance * 1000ms` to complete (see `RealTimeArbiter`), and pieces
 can collide, race for a square, or get captured mid-flight. It's a learning project (student is building it while
-still learning C++), so keep changes minimal, focused, and avoid introducing new third-party dependencies beyond
-OpenCV (already a required dependency) — prefer solving problems by writing code over pulling in libraries.
+still learning C++), so keep changes minimal and focused, and don't reach for a new third-party dependency to solve
+something writing code already solves.
+
+`Logic/`/`UI/`/`Client/` (the local single-process game) stay dependency-minimal as above: OpenCV is the one
+required third-party dependency there. `Server/`'s persistence layer is the deliberate exception, as of the
+Postgres/Redis cloud-migration work (see `Server_Design.md` for the scaling rationale): `PostgresAccountRepository`
+(`libpqxx`) and Redis (`hiredis`) are accepted dependencies *there*, gated behind a CMake option so the native
+Windows/SQLite dev build (below) keeps working untouched by default — see `docker-compose.yml`/`Dockerfile.server`
+for the containerized build that actually exercises them.
 
 ## Build
 

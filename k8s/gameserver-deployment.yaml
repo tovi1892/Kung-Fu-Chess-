@@ -1,0 +1,71 @@
+# IMPORTANT CAVEAT (read before scaling replicas beyond 1): RoomManager's room/session state
+# (Server/RoomManager.hpp, Server/ConnectionSessions.hpp) lives entirely in each pod's own
+# process memory - there is no shared/distributed room registry between replicas (Redis was
+# deliberately left out of this round of work - see Server_Design.md's "Real-Time State &
+# Routing" section for what that would take: a Redis-backed room-to-pod map plus a routing
+# gateway). With replicas > 1 and no session affinity, two players quick-matched or joining
+# the same room key can land on two different pods that have never heard of each other's
+# room - matchmaking and room routing will silently break. sessionAffinity: ClientIP on the
+# Service below is a partial mitigation (repeat connections from the same client IP keep
+# hitting the same pod), NOT a real fix - two different players are two different client IPs
+# and can still land on different pods for the same room. Until real cross-pod room routing
+# exists, keep replicas at 1 for correct behavior; the fields below are wired up correctly
+# for when that routing layer exists, not because 2+ replicas is safe today.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kungfu-gameserver
+  labels:
+    app: kungfu-gameserver
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kungfu-gameserver
+  template:
+    metadata:
+      labels:
+        app: kungfu-gameserver
+    spec:
+      containers:
+        - name: kungfu-gameserver
+          # Replace with your actual built-and-pushed image (built from Dockerfile.server,
+          # e.g. via `docker build -f Dockerfile.server -t <registry>/kungfu-gameserver:latest .`
+          # && docker push <registry>/kungfu-gameserver:latest).
+          image: your-registry/kungfu-gameserver:latest
+          ports:
+            - containerPort: 8080
+              name: websocket
+          envFrom:
+            - configMapRef:
+                name: kungfu-gameserver-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kungfu-gameserver-secret
+                  key: DB_PASSWORD
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          # kungfu_server speaks raw WebSocket, not HTTP - tcpSocket is the K8s-native probe
+          # type for that (no HTTP handshake needed, just confirms the port accepts
+          # connections), same reasoning as Dockerfile.server's netcat-based HEALTHCHECK.
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

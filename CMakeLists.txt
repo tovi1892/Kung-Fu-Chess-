@@ -11,6 +11,18 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Choose whether to build tests
 option(BUILD_TESTS "Build unit and integration tests" ON)
 
+# The OpenCV-based local client (kungfu_ui/kungfu_app) - off for server-only builds (e.g.
+# Dockerfile.server's Ubuntu container, which has no OpenCV installed at all) so configure
+# doesn't even search for OpenCV in that case. On by default, matching every build this
+# project has done before this option existed.
+option(BUILD_APP "Build the OpenCV-based local client (kungfu_ui/kungfu_app)" ON)
+
+# PostgresAccountRepository (Server/PostgresAccountRepository.cpp) via libpqxx - off by
+# default so the native Windows/SQLite dev build (see CLAUDE.md) stays exactly as it was
+# before this option existed, with no libpqxx search at all. Dockerfile.server turns this on;
+# see Server/IAccountRepository.hpp for why swapping backends needs nothing else.
+option(KUNGFU_ENABLE_POSTGRES "Build PostgresAccountRepository via libpqxx" OFF)
+
 
 # --- Dependencies ---------------------------------------------------------
 include(FetchContent)
@@ -27,9 +39,11 @@ endif()
 
 # Prefer that users set OpenCV_DIR externally (e.g. via CMake cache or env).
 # If OpenCV is installed and discoverable, this will succeed on Windows/MSVC.
-find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
-if(NOT OpenCV_FOUND)
-    message(FATAL_ERROR "OpenCV not found. Set OpenCV_DIR to your OpenCV build (e.g. C:/opencv/build) and re-run CMake.")
+if(BUILD_APP)
+    find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
+    if(NOT OpenCV_FOUND)
+        message(FATAL_ERROR "OpenCV not found. Set OpenCV_DIR to your OpenCV build (e.g. C:/opencv/build) and re-run CMake.")
+    endif()
 endif()
 
 # IXWebSocket: the transport for the client<->server split (Network/). TLS/ZLIB are
@@ -89,7 +103,12 @@ add_library(kungfu_network STATIC ${NETWORK_SOURCES})
 target_include_directories(kungfu_network PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
-target_link_libraries(kungfu_network PUBLIC kungfu_logic ixwebsocket ws2_32)
+target_link_libraries(kungfu_network PUBLIC kungfu_logic ixwebsocket)
+if(WIN32)
+    # Winsock - needed by ixwebsocket's socket layer on Windows only; Linux (Dockerfile.server)
+    # uses the native BSD sockets API already provided by libc, no separate library to link.
+    target_link_libraries(kungfu_network PUBLIC ws2_32)
+endif()
 
 # --- kungfu_client: the client-side GameEngine stand-in over WebSocket -
 # depends on kungfu_logic + kungfu_network only, zero OpenCV/Win32.
@@ -101,35 +120,72 @@ target_include_directories(kungfu_client PUBLIC
 target_link_libraries(kungfu_client PUBLIC kungfu_logic kungfu_network)
 
 # --- kungfu_ui: the OpenCV-backed view, depends on kungfu_logic only ----
-file(GLOB_RECURSE UI_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/UI/*.cpp")
-add_library(kungfu_ui STATIC ${UI_SOURCES})
-target_include_directories(kungfu_ui PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/UI
-)
-target_link_libraries(kungfu_ui PUBLIC kungfu_logic)
+if(BUILD_APP)
+    file(GLOB_RECURSE UI_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/UI/*.cpp")
+    add_library(kungfu_ui STATIC ${UI_SOURCES})
+    target_include_directories(kungfu_ui PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/UI
+    )
+    target_link_libraries(kungfu_ui PUBLIC kungfu_logic)
 
-if(TARGET OpenCV::opencv_core)
-    target_link_libraries(kungfu_ui PUBLIC OpenCV::opencv_core OpenCV::imgproc OpenCV::highgui)
-else()
-    target_include_directories(kungfu_ui PUBLIC ${OpenCV_INCLUDE_DIRS})
-    target_link_libraries(kungfu_ui PUBLIC ${OpenCV_LIBS})
+    if(TARGET OpenCV::opencv_core)
+        target_link_libraries(kungfu_ui PUBLIC OpenCV::opencv_core OpenCV::imgproc OpenCV::highgui)
+    else()
+        target_include_directories(kungfu_ui PUBLIC ${OpenCV_INCLUDE_DIRS})
+        target_link_libraries(kungfu_ui PUBLIC ${OpenCV_LIBS})
+    endif()
+
+    # SoundPlayer (UI/Windows/SoundPlayer.cpp) uses PlaySoundW from winmm - a native
+    # Windows API, not a new third-party dependency.
+    target_link_libraries(kungfu_ui PUBLIC winmm)
 endif()
-
-# SoundPlayer (UI/Windows/SoundPlayer.cpp) uses PlaySoundW from winmm - a native
-# Windows API, not a new third-party dependency.
-target_link_libraries(kungfu_ui PUBLIC winmm)
 
 # --- Executables -------------------------------------------------------------
 # Server: owns the real GameEngine (one per room), no OpenCV involved at all.
-# Links sqlite3 (AccountStore) and bcrypt (Windows CNG, password hashing) - scoped only
-# here, since the client never touches the database or does its own hashing.
+# Exactly one of SqliteAccountRepository.cpp/PostgresAccountRepository.cpp is compiled,
+# matching which one main.cpp's #ifdef KUNGFU_ENABLE_POSTGRES actually instantiates - not
+# just unlinked, genuinely never attempted, since each pulls in headers the other platform
+# doesn't have at all (bcrypt.h/windows.h are Windows-only; pqxx/openssl needs libpqxx/
+# OpenSSL installed, which the native Windows dev build never requires).
 file(GLOB_RECURSE SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/*.cpp")
+if(KUNGFU_ENABLE_POSTGRES)
+    list(REMOVE_ITEM SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/SqliteAccountRepository.cpp")
+else()
+    list(REMOVE_ITEM SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Server/PostgresAccountRepository.cpp")
+endif()
 add_executable(kungfu_server ${SERVER_SOURCES})
-target_link_libraries(kungfu_server PRIVATE kungfu_logic kungfu_network sqlite3 bcrypt)
+target_link_libraries(kungfu_server PRIVATE kungfu_logic kungfu_network)
+
+if(KUNGFU_ENABLE_POSTGRES)
+    # Ubuntu 22.04's libpqxx-dev resolves to libpqxx 6.4.5 (confirmed from an actual
+    # Dockerfile.server build log - Ubuntu's package, despite the name, is well behind
+    # libpqxx's real 7.x release line), which predates libpqxx's own CMake package config
+    # (added in 7.x) - find_package(libpqxx CONFIG) would fail here. pkg-config is what
+    # libpqxx 6.x actually ships on Ubuntu, so use that instead; it also transitively pulls
+    # in libpq's flags/libs, no separate find_package(PostgreSQL) needed.
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(PQXX REQUIRED IMPORTED_TARGET libpqxx)
+    target_link_libraries(kungfu_server PRIVATE PkgConfig::PQXX)
+    target_compile_definitions(kungfu_server PRIVATE KUNGFU_ENABLE_POSTGRES)
+
+    # PostgresAccountRepository needs a portable (Linux-buildable) PBKDF2 implementation -
+    # SqliteAccountRepository's Windows-CNG one (bcrypt.h) doesn't compile outside Windows.
+    # OpenSSL's PKCS5_PBKDF2_HMAC is the standard choice here rather than hand-rolling PBKDF2/
+    # HMAC/SHA-256, which would be a real security risk to get subtly wrong.
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(kungfu_server PRIVATE OpenSSL::Crypto)
+else()
+    # sqlite3 (SqliteAccountRepository) and bcrypt (Windows CNG, password hashing) - both
+    # Windows/native-only, never linked (and, per the exclusion above, never even compiled
+    # against) on the Postgres/Linux path.
+    target_link_libraries(kungfu_server PRIVATE sqlite3 bcrypt)
+endif()
 
 # Client: owns the OpenCV window, talks to the server instead of owning GameEngine.
-add_executable(kungfu_app main.cpp)
-target_link_libraries(kungfu_app PRIVATE kungfu_ui kungfu_client)
+if(BUILD_APP)
+    add_executable(kungfu_app main.cpp)
+    target_link_libraries(kungfu_app PRIVATE kungfu_ui kungfu_client)
+endif()
 
 # הגדרת טסטים (Integration)
 # Integration tests
