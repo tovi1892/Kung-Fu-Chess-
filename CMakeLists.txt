@@ -187,6 +187,13 @@ if(BUILD_APP)
     target_link_libraries(kungfu_app PRIVATE kungfu_ui kungfu_client)
 endif()
 
+# Gateway: a transparent WS proxy in front of a Shard (kungfu_server) - understands nothing
+# about the game protocol or domain logic, so it needs only kungfu_network, not kungfu_logic,
+# no database, no OpenCV. See Gateway/WsGateway.hpp for the full rationale.
+file(GLOB_RECURSE GATEWAY_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Gateway/*.cpp")
+add_executable(kungfu_gateway ${GATEWAY_SOURCES})
+target_link_libraries(kungfu_gateway PRIVATE kungfu_network)
+
 # הגדרת טסטים (Integration)
 # Integration tests
 if(BUILD_TESTS)

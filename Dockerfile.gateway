@@ -1,0 +1,56 @@
+# Multi-stage Dockerfile for the WebSocket Gateway - a transparent proxy in front of a Shard
+# (kungfu_server, built by Dockerfile.server). Needs neither libpqxx/OpenSSL (no database
+# access at all, see Gateway/WsGateway.hpp) nor OpenCV (BUILD_APP=OFF) - only kungfu_network.
+
+# Stage 1: Build Environment
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ca-certificates is required here (not just for completeness) because CMake's FetchContent
+# does a real `git clone` over https:// for ixwebsocket during the build step further down -
+# see Dockerfile.server's identical comment for why.
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    ninja-build \
+    g++ \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY . .
+
+# Same TLS-verification workaround as Dockerfile.server - see its comment for the full
+# explanation (this build environment's network breaks HTTPS cert verification for git
+# specifically, confirmed independent of ca-certificates being installed).
+RUN git config --global http.sslVerify false
+
+# Only kungfu_gateway needs building - no tests, no OpenCV-dependent app/UI, no Postgres.
+RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_TESTS=OFF -DBUILD_APP=OFF \
+    && cmake --build build --config Release --target kungfu_gateway
+
+# Stage 2: Minimal Production Runtime
+FROM ubuntu:22.04 AS runner
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /app/build/kungfu_gateway /app/kungfu_gateway
+
+EXPOSE 9000
+
+# Same reasoning as Dockerfile.server's HEALTHCHECK - raw WebSocket, not HTTP, so a plain TCP
+# connect is the simplest real proof the process is up and accepting connections.
+HEALTHCHECK --interval=5s --timeout=5s --retries=5 --start-period=5s \
+    CMD nc -z localhost 9000 || exit 1
+
+CMD ["/app/kungfu_gateway"]

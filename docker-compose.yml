@@ -21,14 +21,15 @@ services:
       retries: 5
 
   # 2. Kung-Fu Chess C++ Game Server Shard (Containerized) - the authoritative GameEngine.
+  # No host port exposed deliberately: real clients now go through the gateway service
+  # below, not directly to the shard - only reachable from other containers on the compose
+  # network, by service name (game-server:8080).
   game-server:
     build:
       context: .
       dockerfile: Dockerfile.server
     container_name: kungfu_gameserver
     restart: unless-stopped
-    ports:
-      - "8080:8080" # WebSocket port for clients
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -38,6 +39,24 @@ services:
       - PORT=8080
     depends_on:
       postgres:
+        condition: service_healthy
+
+  # 3. WebSocket Gateway - a transparent proxy in front of the shard (see
+  # Gateway/WsGateway.hpp). This is the one service real clients actually connect to;
+  # it has no database access and understands nothing about the game protocol.
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    container_name: kungfu_gateway
+    restart: unless-stopped
+    ports:
+      - "9000:9000" # WebSocket port for clients
+    environment:
+      - GATEWAY_PORT=9000
+      - SHARD_URL=ws://game-server:8080
+    depends_on:
+      game-server:
         condition: service_healthy
 
 volumes:
