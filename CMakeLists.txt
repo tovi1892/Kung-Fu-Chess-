@@ -23,6 +23,12 @@ option(BUILD_APP "Build the OpenCV-based local client (kungfu_ui/kungfu_app)" ON
 # see Server/IAccountRepository.hpp for why swapping backends needs nothing else.
 option(KUNGFU_ENABLE_POSTGRES "Build PostgresAccountRepository via libpqxx" OFF)
 
+# RedisRoomRegistry (Gateway/RedisRoomRegistry.cpp) via hiredis - off by default so the
+# native Windows dev build (and any single-Gateway-process local run) stays exactly as it
+# was before this option existed, with no hiredis search at all. Dockerfile.gateway turns
+# this on; see Gateway/IRoomRegistry.hpp for why swapping backends needs nothing else.
+option(KUNGFU_ENABLE_REDIS "Build RedisRoomRegistry via hiredis" OFF)
+
 
 # --- Dependencies ---------------------------------------------------------
 include(FetchContent)
@@ -187,12 +193,29 @@ if(BUILD_APP)
     target_link_libraries(kungfu_app PRIVATE kungfu_ui kungfu_client)
 endif()
 
-# Gateway: a transparent WS proxy in front of a Shard (kungfu_server) - understands nothing
-# about the game protocol or domain logic, so it needs only kungfu_network, not kungfu_logic,
-# no database, no OpenCV. See Gateway/WsGateway.hpp for the full rationale.
+# Gateway: a WS proxy in front of a set of Shards (kungfu_server instances) - understands
+# just enough of the protocol to route LOGIN/JOIN, never the game-state traffic, so it needs
+# only kungfu_network, not kungfu_logic, no OpenCV. See Gateway/WsGateway.hpp for the full
+# rationale. Exactly one of InMemoryRoomRegistry.cpp/RedisRoomRegistry.cpp is compiled,
+# matching which one main.cpp's #ifdef KUNGFU_ENABLE_REDIS actually instantiates - same
+# mutual-exclusion pattern as kungfu_server's Sqlite/PostgresAccountRepository split above.
 file(GLOB_RECURSE GATEWAY_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Gateway/*.cpp")
+if(KUNGFU_ENABLE_REDIS)
+    list(REMOVE_ITEM GATEWAY_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Gateway/InMemoryRoomRegistry.cpp")
+else()
+    list(REMOVE_ITEM GATEWAY_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Gateway/RedisRoomRegistry.cpp")
+endif()
 add_executable(kungfu_gateway ${GATEWAY_SOURCES})
 target_link_libraries(kungfu_gateway PRIVATE kungfu_network)
+
+if(KUNGFU_ENABLE_REDIS)
+    # Same pkg-config path as KUNGFU_ENABLE_POSTGRES's libpqxx block above - Ubuntu 22.04's
+    # libhiredis-dev ships a hiredis.pc, no CMake package config needed.
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(HIREDIS REQUIRED IMPORTED_TARGET hiredis)
+    target_link_libraries(kungfu_gateway PRIVATE PkgConfig::HIREDIS)
+    target_compile_definitions(kungfu_gateway PRIVATE KUNGFU_ENABLE_REDIS)
+endif()
 
 # הגדרת טסטים (Integration)
 # Integration tests

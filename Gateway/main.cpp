@@ -1,8 +1,17 @@
+#include <cctype>
 #include <cstdlib>
 #include <exception>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "WsGateway.hpp"
+
+#ifdef KUNGFU_ENABLE_REDIS
+#include "RedisRoomRegistry.hpp"
+#else
+#include "InMemoryRoomRegistry.hpp"
+#endif
 
 #include "Network/Logger.hpp"
 
@@ -33,15 +42,50 @@ int envIntOr(const char* name, int fallback) {
     }
 }
 
+// "ws://a:1,ws://b:2" -> ["ws://a:1", "ws://b:2"] - trims surrounding whitespace per entry so
+// a docker-compose-style multi-line env value with accidental spaces still parses cleanly.
+std::vector<std::string> splitCsv(const std::string& csv) {
+    std::vector<std::string> parts;
+    std::size_t start = 0;
+    while (start <= csv.size()) {
+        const std::size_t comma = csv.find(',', start);
+        const std::size_t end = comma == std::string::npos ? csv.size() : comma;
+        std::size_t first = start;
+        while (first < end && std::isspace(static_cast<unsigned char>(csv[first]))) {
+            ++first;
+        }
+        std::size_t last = end;
+        while (last > first && std::isspace(static_cast<unsigned char>(csv[last - 1]))) {
+            --last;
+        }
+        if (last > first) {
+            parts.push_back(csv.substr(first, last - first));
+        }
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return parts;
+}
+
 }  // namespace
 
 int main() {
     const int listenPort = envIntOr("GATEWAY_PORT", 9000);
-    const std::string upstreamUrl = envOr("SHARD_URL", "ws://127.0.0.1:7777");
+    const std::string shardUrlsRaw = envOr("SHARD_URLS", "ws://127.0.0.1:7777");
+    const std::vector<std::string> shardUrls = splitCsv(shardUrlsRaw);
 
     Logger logger("GATEWAY", "logs/gateway.log");
-    logger.log("starting on port " + std::to_string(listenPort) + ", forwarding to " + upstreamUrl);
+    logger.log("starting on port " + std::to_string(listenPort) + ", shards: " + shardUrlsRaw);
 
-    WsGateway gateway(listenPort, upstreamUrl);
+#ifdef KUNGFU_ENABLE_REDIS
+    auto roomRegistry =
+        std::make_shared<RedisRoomRegistry>(envOr("REDIS_HOST", "127.0.0.1"), envIntOr("REDIS_PORT", 6379));
+#else
+    auto roomRegistry = std::make_shared<InMemoryRoomRegistry>();
+#endif
+
+    WsGateway gateway(listenPort, shardUrls, roomRegistry, logger);
     gateway.run();
 }

@@ -1,6 +1,7 @@
-# Multi-stage Dockerfile for the WebSocket Gateway - a transparent proxy in front of a Shard
-# (kungfu_server, built by Dockerfile.server). Needs neither libpqxx/OpenSSL (no database
-# access at all, see Gateway/WsGateway.hpp) nor OpenCV (BUILD_APP=OFF) - only kungfu_network.
+# Multi-stage Dockerfile for the WebSocket Gateway - a proxy in front of a set of Shards
+# (kungfu_server, built by Dockerfile.server) that routes LOGIN/JOIN by room key, backed by
+# Redis (see Gateway/RedisRoomRegistry.hpp). Needs neither libpqxx/OpenSSL (no account
+# database access at all) nor OpenCV (BUILD_APP=OFF) - just kungfu_network plus hiredis.
 
 # Stage 1: Build Environment
 FROM ubuntu:22.04 AS builder
@@ -15,6 +16,8 @@ RUN apt-get update && apt-get install -y \
     cmake \
     ninja-build \
     g++ \
+    pkg-config \
+    libhiredis-dev \
     ca-certificates \
     git \
     && rm -rf /var/lib/apt/lists/*
@@ -29,8 +32,9 @@ COPY . .
 RUN git config --global http.sslVerify false
 
 # Only kungfu_gateway needs building - no tests, no OpenCV-dependent app/UI, no Postgres.
+# KUNGFU_ENABLE_REDIS turns on RedisRoomRegistry (needs libhiredis-dev above).
 RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_TESTS=OFF -DBUILD_APP=OFF \
+    -DBUILD_TESTS=OFF -DBUILD_APP=OFF -DKUNGFU_ENABLE_REDIS=ON \
     && cmake --build build --config Release --target kungfu_gateway
 
 # Stage 2: Minimal Production Runtime
@@ -38,7 +42,10 @@ FROM ubuntu:22.04 AS runner
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Reinstalling libhiredis-dev here rather than guessing the versioned runtime-only package
+# name - same reasoning Dockerfile.server documents for libpqxx-dev/libssl-dev.
 RUN apt-get update && apt-get install -y \
+    libhiredis-dev \
     netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 

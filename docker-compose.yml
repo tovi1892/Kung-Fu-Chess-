@@ -20,15 +20,32 @@ services:
       timeout: 5s
       retries: 5
 
-  # 2. Kung-Fu Chess C++ Game Server Shard (Containerized) - the authoritative GameEngine.
-  # No host port exposed deliberately: real clients now go through the gateway service
-  # below, not directly to the shard - only reachable from other containers on the compose
-  # network, by service name (game-server:8080).
-  game-server:
+  # 2. In-memory store for the Gateway's room->shard routing (see Gateway/RedisRoomRegistry.hpp)
+  # - only ever consulted for freeform JoinRoom keys, not CreateRoom's shard-index-prefixed
+  # ones (see Gateway/WsGateway.hpp), but real enough to be worth a real Redis rather than
+  # the Gateway's in-process fallback the moment there's more than one game-server shard.
+  redis:
+    image: redis:7-alpine
+    container_name: kungfu_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3/4. Two Kung-Fu Chess C++ Game Server Shards (Containerized) - each an independent,
+  # authoritative GameEngine/RoomManager, both sharing the same Postgres account DB (see
+  # Server_Design.md's scaling rationale). No host port exposed deliberately: real clients go
+  # through the gateway service below, not directly to a shard - only reachable from other
+  # containers on the compose network, by service name (game-server-N:8080).
+  game-server-1:
     build:
       context: .
       dockerfile: Dockerfile.server
-    container_name: kungfu_gameserver
+    container_name: kungfu_gameserver_1
     restart: unless-stopped
     environment:
       - DB_HOST=postgres
@@ -41,9 +58,27 @@ services:
       postgres:
         condition: service_healthy
 
-  # 3. WebSocket Gateway - a transparent proxy in front of the shard (see
-  # Gateway/WsGateway.hpp). This is the one service real clients actually connect to;
-  # it has no database access and understands nothing about the game protocol.
+  game-server-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: kungfu_gameserver_2
+    restart: unless-stopped
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=kungfu_admin
+      - DB_PASSWORD=secretpassword
+      - DB_NAME=kungfu_chess
+      - PORT=8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 5. WebSocket Gateway - routes each connection across the shard list above (see
+  # Gateway/WsGateway.hpp). This is the one service real clients actually connect to; it has
+  # no account-database access, and only decodes just enough of the protocol (LOGIN/JOIN/ROOM)
+  # to route correctly - CLICK/STATE traffic is pure byte relay exactly as before this existed.
   gateway:
     build:
       context: .
@@ -54,9 +89,15 @@ services:
       - "9000:9000" # WebSocket port for clients
     environment:
       - GATEWAY_PORT=9000
-      - SHARD_URL=ws://game-server:8080
+      - SHARD_URLS=ws://game-server-1:8080,ws://game-server-2:8080
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
-      game-server:
+      game-server-1:
+        condition: service_healthy
+      game-server-2:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:
