@@ -61,6 +61,9 @@ compile_commands.json
 # Runtime-generated account database (Server/AccountStore) - created fresh on first run
 *.db
 
+# Local secrets (docker-compose.yml's api-gateway Supabase credentials) - see .env.example
+.env
+
 # vcpkg
 vcpkg_installed/
 
