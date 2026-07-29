@@ -75,7 +75,27 @@ services:
       postgres:
         condition: service_healthy
 
-  # 5. WebSocket Gateway - routes each connection across the shard list above (see
+  # 5. Standalone cross-shard QuickMatch pairing service (see Matchmaker/Matchmaker.hpp) - the
+  # fix for two shards' independent in-process RoomManager waiting lists never being able to
+  # see each other. SHARD_COUNT must be kept in sync with the gateway service's SHARD_URLS
+  # list length below (a manual deployment invariant, same kind this file already has for the
+  # two game-server-N services above).
+  matchmaker:
+    build:
+      context: .
+      dockerfile: Dockerfile.matchmaker
+    container_name: kungfu_matchmaker
+    restart: unless-stopped
+    environment:
+      - MATCHMAKER_PORT=9100
+      - SHARD_COUNT=2
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # 6. WebSocket Gateway - routes each connection across the shard list above (see
   # Gateway/WsGateway.hpp). This is the one service real clients actually connect to; it has
   # no account-database access, and only decodes just enough of the protocol (LOGIN/JOIN/ROOM)
   # to route correctly - CLICK/STATE traffic is pure byte relay exactly as before this existed.
@@ -90,6 +110,7 @@ services:
     environment:
       - GATEWAY_PORT=9000
       - SHARD_URLS=ws://game-server-1:8080,ws://game-server-2:8080
+      - MATCHMAKER_URL=ws://matchmaker:9100
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     depends_on:
@@ -97,10 +118,12 @@ services:
         condition: service_healthy
       game-server-2:
         condition: service_healthy
+      matchmaker:
+        condition: service_healthy
       redis:
         condition: service_healthy
 
-  # 6. Stateless REST API Gateway - login/register/profile/leaderboard over HTTP, decoupled
+  # 7. Stateless REST API Gateway - login/register/profile/leaderboard over HTTP, decoupled
   # from the realtime WS path (see ApiGateway/ApiGateway.hpp). Shares the same Postgres
   # account DB as the game-server shards; has no relationship to the WS gateway service
   # above (no session-token handoff between them yet - see ApiGateway.hpp's comment).

@@ -75,9 +75,11 @@ int main() {
     const int listenPort = envIntOr("GATEWAY_PORT", 9000);
     const std::string shardUrlsRaw = envOr("SHARD_URLS", "ws://127.0.0.1:7777");
     const std::vector<std::string> shardUrls = splitCsv(shardUrlsRaw);
+    const std::string matchmakerUrl = envOr("MATCHMAKER_URL", "ws://127.0.0.1:9100");
 
     Logger logger("GATEWAY", "logs/gateway.log");
-    logger.log("starting on port " + std::to_string(listenPort) + ", shards: " + shardUrlsRaw);
+    logger.log("starting on port " + std::to_string(listenPort) + ", shards: " + shardUrlsRaw +
+               ", matchmaker: " + matchmakerUrl);
 
 #ifdef KUNGFU_ENABLE_REDIS
     auto roomRegistry =
@@ -86,6 +88,6 @@ int main() {
     auto roomRegistry = std::make_shared<InMemoryRoomRegistry>();
 #endif
 
-    WsGateway gateway(listenPort, shardUrls, roomRegistry, logger);
+    WsGateway gateway(listenPort, shardUrls, matchmakerUrl, roomRegistry, logger);
     gateway.run();
 }

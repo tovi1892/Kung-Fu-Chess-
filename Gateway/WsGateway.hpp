@@ -47,8 +47,8 @@ public:
 
     // Throws std::invalid_argument if shardUrls is empty. logger must outlive this object -
     // same by-reference-injection contract as Server/GameServer.hpp's constructor.
-    WsGateway(int listenPort, std::vector<std::string> shardUrls, std::shared_ptr<IRoomRegistry> roomRegistry,
-              net::Logger& logger);
+    WsGateway(int listenPort, std::vector<std::string> shardUrls, std::string matchmakerUrl,
+              std::shared_ptr<IRoomRegistry> roomRegistry, net::Logger& logger);
 
     // Starts the downstream listener and blocks forever - the last call main() makes.
     [[noreturn]] void run();
@@ -64,9 +64,11 @@ private:
         AwaitingJoin,                // LOGIN forwarded, haven't seen/forwarded JOIN yet
         RedirectAwaitingLoginReply,  // mid-redirect: replayed LOGIN sent on the new leg,
                                      // waiting for (and about to swallow) its LOGIN_OK/FAIL
-        AwaitingRoomReply,           // JOIN forwarded (CreateRoom/JoinRoom only - QuickMatch
-                                     // never gets a ROOM reply, see Network/Protocol.hpp),
-                                     // not yet observed
+        AwaitingMatchmaker,          // QuickMatch: WAIT sent to the Matchmaker leg, waiting
+                                     // for MATCHED/NO_OPPONENT - the shard leg sits idle
+                                     // throughout (see WsGateway.cpp's dispatch comment)
+        AwaitingRoomReply,           // JOIN forwarded (CreateRoom/JoinRoom, or the synthetic
+                                     // JoinRoom a Matchmaker match produces) - not yet observed
         Resolved,                    // pure relay forever after this, both directions
     };
 
@@ -81,6 +83,9 @@ private:
                            // shard index is the correct, idempotent thing to do
         RegisterFreeform,  // JoinRoom with a freeform key - register it in roomRegistry_,
                            // forward the reply unmodified
+        Suppress,          // QuickMatch's synthetic JoinRoom - the client-facing QuickMatch
+                           // protocol never shows a ROOM message (see Network/Protocol.hpp),
+                           // so this reply must never reach the client at all
     };
 
     // One proxied client's upstream leg, plus enough state to buffer any downstream messages
@@ -103,6 +108,21 @@ private:
                                               // callback recognize itself and stop interpreting
         JoinPhase phase = JoinPhase::AwaitingLogin;
         RoomReplyAction pendingRoomReplyAction = RoomReplyAction::AddShardPrefix;
+
+        // Captured once, purely to build a QuickMatch WAIT message: username from the
+        // client's own cached LOGIN text, cachedRating from the shard's LOGIN_OK reply
+        // (peeked while forwarding it unmodified - see attachUpstreamCallbacks).
+        std::string username;
+        int cachedRating = 0;
+
+        // The Matchmaker leg - genuinely parallel to, not a replacement for, the shard leg
+        // above (transport/generation exist to swap *which shard* one connection points to;
+        // this leg coexists alongside it during a QuickMatch wait). Same
+        // open/pending-buffer/generation shape as the shard leg, scoped to just this leg.
+        std::unique_ptr<net::WsClientTransport> matchmakerTransport;
+        bool matchmakerOpen = false;
+        std::vector<std::string> matchmakerPending;
+        int matchmakerGeneration = 0;
     };
 
     void handleDownstreamConnect(const ConnectionId& id);
@@ -135,6 +155,21 @@ private:
     // synchronous-reentrancy behavior (Network/WsServerTransport.cpp has the same note).
     void sendOrQueue(const std::shared_ptr<UpstreamConnection>& conn, const std::string& text);
 
+    // Same role as sendOrQueue/attachUpstreamCallbacks above, but for the Matchmaker leg -
+    // kept as separate methods rather than generalizing over "some WsClientTransport this
+    // connection depends on", since the message shapes (net::mm vs net::) and the lack of any
+    // redirect-this-leg flow make the two genuinely different, not just parameterized copies.
+    void attachMatchmakerCallbacks(const ConnectionId& id, std::weak_ptr<UpstreamConnection> weakConn,
+                                    net::WsClientTransport& transport, int generation);
+    void sendOrMatchmakerQueue(const std::shared_ptr<UpstreamConnection>& conn, const std::string& text);
+
+    // Detaches and tears down conn's matchmaker leg (if any), bumping matchmakerGeneration
+    // first so a straggler callback on the old leg recognizes itself as stale - same
+    // detach-under-lock/destroy-after-unlock discipline redirectAndJoin uses for the shard
+    // leg, for the same reason (~WsClientTransport blocks in stop(), which could deadlock
+    // against that same leg's own in-flight callback if destroyed while still holding mutex_).
+    void teardownMatchmakerLeg(std::shared_ptr<UpstreamConnection> conn);
+
     std::string pickShardUrl();
 
     // roomKey must not contain the Gateway's own "<index>:" prefix syntax - parses a leading
@@ -143,6 +178,7 @@ private:
     std::optional<std::pair<std::size_t, std::string>> parsePrefixedKey(const std::string& roomKey) const;
 
     std::vector<std::string> shardUrls_;
+    std::string matchmakerUrl_;
     std::shared_ptr<IRoomRegistry> roomRegistry_;
     std::atomic<std::size_t> nextShardIndex_{0};
     net::Logger& logger_;

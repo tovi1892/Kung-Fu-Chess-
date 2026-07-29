@@ -23,11 +23,14 @@ option(BUILD_APP "Build the OpenCV-based local client (kungfu_ui/kungfu_app)" ON
 # see Server/IAccountRepository.hpp for why swapping backends needs nothing else.
 option(KUNGFU_ENABLE_POSTGRES "Build PostgresAccountRepository via libpqxx" OFF)
 
-# RedisRoomRegistry (Gateway/RedisRoomRegistry.cpp) via hiredis - off by default so the
-# native Windows dev build (and any single-Gateway-process local run) stays exactly as it
-# was before this option existed, with no hiredis search at all. Dockerfile.gateway turns
-# this on; see Gateway/IRoomRegistry.hpp for why swapping backends needs nothing else.
-option(KUNGFU_ENABLE_REDIS "Build RedisRoomRegistry via hiredis" OFF)
+# RedisRoomRegistry (Gateway/RedisRoomRegistry.cpp) and the standalone Matchmaker service
+# (Matchmaker/Matchmaker.hpp, whose entire purpose is a Redis-backed wait queue) via hiredis -
+# off by default so the native Windows dev build (and any single-Gateway-process local run)
+# stays exactly as it was before this option existed, with no hiredis search at all, and
+# kungfu_matchmaker simply doesn't exist as a build target. Dockerfile.gateway/
+# Dockerfile.matchmaker turn this on; see Gateway/IRoomRegistry.hpp for why swapping the room
+# registry's backend needs nothing else.
+option(KUNGFU_ENABLE_REDIS "Build RedisRoomRegistry/kungfu_matchmaker via hiredis" OFF)
 
 
 # --- Dependencies ---------------------------------------------------------
@@ -249,6 +252,19 @@ if(KUNGFU_ENABLE_REDIS)
     pkg_check_modules(HIREDIS REQUIRED IMPORTED_TARGET hiredis)
     target_link_libraries(kungfu_gateway PRIVATE PkgConfig::HIREDIS)
     target_compile_definitions(kungfu_gateway PRIVATE KUNGFU_ENABLE_REDIS)
+endif()
+
+# Matchmaker: standalone cross-shard QuickMatch pairing service (see
+# Matchmaker/Matchmaker.hpp) - reuses KUNGFU_ENABLE_REDIS as its sole gate, same precedent
+# kungfu_api_gateway already set reusing KUNGFU_ENABLE_POSTGRES above: Redis isn't optional
+# for a service whose entire purpose is the Redis-backed wait queue, so it simply doesn't
+# exist as a build target at all when KUNGFU_ENABLE_REDIS is OFF. PkgConfig::HIREDIS is
+# already resolved by the Gateway's own if(KUNGFU_ENABLE_REDIS) block just above.
+if(KUNGFU_ENABLE_REDIS)
+    file(GLOB_RECURSE MATCHMAKER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Matchmaker/*.cpp")
+    add_executable(kungfu_matchmaker ${MATCHMAKER_SOURCES})
+    target_link_libraries(kungfu_matchmaker PRIVATE kungfu_network PkgConfig::HIREDIS)
+    target_compile_definitions(kungfu_matchmaker PRIVATE KUNGFU_ENABLE_REDIS)
 endif()
 
 # API Gateway: stateless REST facade (login/register/profile/leaderboard) over
