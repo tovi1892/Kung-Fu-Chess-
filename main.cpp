@@ -353,7 +353,7 @@ int main(int argc, char** argv) {
     net::Logger logger("CLIENT", "logs/client.log");
 
     const std::string host = argc >= 2 ? argv[1] : "127.0.0.1";
-    const std::string serverUrl = "ws://" + host + ":7777";
+    const std::string serverUrl = "ws://" + host + ":9000";
 
     // Constructed fresh each login retry (see establishConnection) and never moved - its
     // internal callbacks capture `this`.
