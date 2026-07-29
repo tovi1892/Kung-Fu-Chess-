@@ -43,8 +43,10 @@ services:
       retries: 5
 
   # 3/4. Two Kung-Fu Chess C++ Game Server Shards (Containerized) - each an independent,
-  # authoritative GameEngine/RoomManager, both sharing the same Postgres account DB (see
-  # Server_Design.md's scaling rationale). No host port exposed deliberately: real clients go
+  # authoritative GameEngine/RoomManager, both sharing the same Supabase Postgres account DB
+  # (see Server_Design.md's scaling rationale) - same ${SUPABASE_DB_*} vars api-gateway uses
+  # below, so a match played through the Gateway and a login/leaderboard read through the REST
+  # API Gateway see the same `users` rows. No host port exposed deliberately: real clients go
   # through the gateway service below, not directly to a shard - only reachable from other
   # containers on the compose network, by service name (game-server-N:8080).
   game-server-1:
@@ -57,15 +59,12 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=kungfu_admin
-      - DB_PASSWORD=secretpassword
-      - DB_NAME=kungfu_chess
+      - DB_HOST=${SUPABASE_DB_HOST}
+      - DB_PORT=${SUPABASE_DB_PORT}
+      - DB_USER=${SUPABASE_DB_USER}
+      - DB_PASSWORD=${SUPABASE_DB_PASSWORD}
+      - DB_NAME=${SUPABASE_DB_NAME}
       - PORT=8080
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   game-server-2:
     build:
@@ -77,15 +76,12 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=kungfu_admin
-      - DB_PASSWORD=secretpassword
-      - DB_NAME=kungfu_chess
+      - DB_HOST=${SUPABASE_DB_HOST}
+      - DB_PORT=${SUPABASE_DB_PORT}
+      - DB_USER=${SUPABASE_DB_USER}
+      - DB_PASSWORD=${SUPABASE_DB_PASSWORD}
+      - DB_NAME=${SUPABASE_DB_NAME}
       - PORT=8080
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   # 5. Standalone cross-shard QuickMatch pairing service (see Matchmaker/Matchmaker.hpp) - the
   # fix for two shards' independent in-process RoomManager waiting lists never being able to
@@ -142,9 +138,9 @@ services:
         condition: service_healthy
 
   # 7. Stateless REST API Gateway - login/register/profile/leaderboard over HTTP, decoupled
-  # from the realtime WS path (see ApiGateway/ApiGateway.hpp). Shares the same Postgres
-  # account DB as the game-server shards; has no relationship to the WS gateway service
-  # above (no session-token handoff between them yet - see ApiGateway.hpp's comment).
+  # from the realtime WS path (see ApiGateway/ApiGateway.hpp). Shares the same Supabase
+  # Postgres account DB as the game-server shards; has no relationship to the WS gateway
+  # service above (no session-token handoff between them yet - see ApiGateway.hpp's comment).
   api-gateway:
     build:
       context: .
@@ -163,9 +159,6 @@ services:
       - DB_PASSWORD=${SUPABASE_DB_PASSWORD}
       - DB_NAME=${SUPABASE_DB_NAME}
       - API_GATEWAY_PORT=8081
-    depends_on:
-      postgres:
-        condition: service_healthy
 
 volumes:
   postgres_data:

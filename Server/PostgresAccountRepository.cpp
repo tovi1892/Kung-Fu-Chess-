@@ -71,6 +71,18 @@ std::vector<unsigned char> fromHex(const std::string& hex) {
     return out;
 }
 
+// Client-generated UUID v4 (RFC 4122), rather than relying on Postgres's gen_random_uuid()
+// (only built into core since PG13, pgcrypto extension before that) - one less assumption
+// about what's enabled on a given Postgres instance (e.g. Supabase's managed one).
+std::string generateUuidV4() {
+    auto bytes = randomBytes(16);
+    bytes[6] = static_cast<unsigned char>((bytes[6] & 0x0F) | 0x40);
+    bytes[8] = static_cast<unsigned char>((bytes[8] & 0x3F) | 0x80);
+    const std::string hex = toHex(bytes);
+    return hex.substr(0, 8) + "-" + hex.substr(8, 4) + "-" + hex.substr(12, 4) + "-" + hex.substr(16, 4) +
+           "-" + hex.substr(20, 12);
+}
+
 }  // namespace
 
 PostgresAccountRepository::PostgresAccountRepository(const std::string& host, int port, const std::string& user,
@@ -118,9 +130,12 @@ LoginResult PostgresAccountRepository::login(const std::string& username, const 
     return LoginResult{true, "", kStartingRating, true};
 }
 
-EloUpdateResult PostgresAccountRepository::recordResult(const std::string& winnerUsername,
-                                                          const std::string& loserUsername) {
+EloUpdateResult PostgresAccountRepository::recordResult(const MatchRecord& match) {
     std::lock_guard<std::mutex> lock(mutex_);
+
+    const bool whiteIsWinner = match.winnerUsername == match.whiteUsername;
+    const std::string& winnerUsername = match.winnerUsername;
+    const std::string& loserUsername = whiteIsWinner ? match.blackUsername : match.whiteUsername;
 
     pqxx::work txn(*conn_);
     const int winnerRating =
@@ -139,6 +154,20 @@ EloUpdateResult PostgresAccountRepository::recordResult(const std::string& winne
                      winnerUsername);
     txn.exec_params("UPDATE users SET elo_rating = $1, losses = losses + 1 WHERE username = $2;", newLoserRating,
                      loserUsername);
+
+    const int whiteUserId =
+        txn.exec_params("SELECT user_id FROM users WHERE username = $1;", match.whiteUsername)[0][0].as<int>();
+    const int blackUserId =
+        txn.exec_params("SELECT user_id FROM users WHERE username = $1;", match.blackUsername)[0][0].as<int>();
+    const int winnerUserId = whiteIsWinner ? whiteUserId : blackUserId;
+    const int whiteEloDelta = whiteIsWinner ? (newWinnerRating - winnerRating) : (newLoserRating - loserRating);
+    const int blackEloDelta = whiteIsWinner ? (newLoserRating - loserRating) : (newWinnerRating - winnerRating);
+
+    txn.exec_params(
+        "INSERT INTO matches (match_id, white_user_id, black_user_id, winner_user_id, white_elo_delta, "
+        "black_elo_delta, pgn_data) VALUES ($1, $2, $3, $4, $5, $6, $7);",
+        generateUuidV4(), whiteUserId, blackUserId, winnerUserId, whiteEloDelta, blackEloDelta, match.pgnData);
+
     txn.commit();
 
     return EloUpdateResult{newWinnerRating, newLoserRating};

@@ -24,7 +24,7 @@ public:
     SqliteAccountRepository& operator=(const SqliteAccountRepository&) = delete;
 
     LoginResult login(const std::string& username, const std::string& password) override;
-    EloUpdateResult recordResult(const std::string& winnerUsername, const std::string& loserUsername) override;
+    EloUpdateResult recordResult(const MatchRecord& match) override;
 
 private:
     sqlite3* db_ = nullptr;

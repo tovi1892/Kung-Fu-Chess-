@@ -88,6 +88,29 @@ void setRating(sqlite3* db, const std::string& username, int rating) {
     sqlite3_finalize(stmt);
 }
 
+std::string toHex(const std::vector<unsigned char>& bytes) {
+    static const char kDigits[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (unsigned char b : bytes) {
+        out.push_back(kDigits[b >> 4]);
+        out.push_back(kDigits[b & 0x0F]);
+    }
+    return out;
+}
+
+// Client-generated UUID v4 (RFC 4122) - SQLite has no built-in UUID generator, and this is a
+// local dev-only artifact anyway (see PostgresAccountRepository.cpp's equivalent for the
+// networked-backend rationale).
+std::string generateUuidV4() {
+    auto bytes = randomBytes(16);
+    bytes[6] = static_cast<unsigned char>((bytes[6] & 0x0F) | 0x40);
+    bytes[8] = static_cast<unsigned char>((bytes[8] & 0x3F) | 0x80);
+    const std::string hex = toHex(bytes);
+    return hex.substr(0, 8) + "-" + hex.substr(8, 4) + "-" + hex.substr(12, 4) + "-" + hex.substr(16, 4) +
+           "-" + hex.substr(20, 12);
+}
+
 }  // namespace
 
 SqliteAccountRepository::SqliteAccountRepository(const std::string& dbPath) {
@@ -100,6 +123,20 @@ SqliteAccountRepository::SqliteAccountRepository(const std::string& dbPath) {
             password_hash BLOB NOT NULL,
             password_salt BLOB NOT NULL,
             rating INTEGER NOT NULL DEFAULT 1200
+        );
+    )");
+    // Local-dev counterpart to init-db.sql's `matches` table - references usernames directly
+    // rather than a surrogate user_id, matching `accounts`' own username-as-primary-key shape.
+    execOrThrow(db_, R"(
+        CREATE TABLE IF NOT EXISTS matches (
+            match_id TEXT PRIMARY KEY,
+            white_username TEXT NOT NULL,
+            black_username TEXT NOT NULL,
+            winner_username TEXT NOT NULL,
+            white_elo_delta INTEGER NOT NULL,
+            black_elo_delta INTEGER NOT NULL,
+            pgn_data TEXT,
+            ended_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
     )");
 }
@@ -152,8 +189,12 @@ LoginResult SqliteAccountRepository::login(const std::string& username, const st
     return LoginResult{true, "", kStartingRating, true};
 }
 
-EloUpdateResult SqliteAccountRepository::recordResult(const std::string& winnerUsername, const std::string& loserUsername) {
+EloUpdateResult SqliteAccountRepository::recordResult(const MatchRecord& match) {
     execOrThrow(db_, "BEGIN;");
+
+    const bool whiteIsWinner = match.winnerUsername == match.whiteUsername;
+    const std::string& winnerUsername = match.winnerUsername;
+    const std::string& loserUsername = whiteIsWinner ? match.blackUsername : match.whiteUsername;
 
     const int winnerRating = getRating(db_, winnerUsername);
     const int loserRating = getRating(db_, loserUsername);
@@ -168,6 +209,25 @@ EloUpdateResult SqliteAccountRepository::recordResult(const std::string& winnerU
 
     setRating(db_, winnerUsername, newWinnerRating);
     setRating(db_, loserUsername, newLoserRating);
+
+    const int whiteEloDelta = whiteIsWinner ? (newWinnerRating - winnerRating) : (newLoserRating - loserRating);
+    const int blackEloDelta = whiteIsWinner ? (newLoserRating - loserRating) : (newWinnerRating - winnerRating);
+
+    sqlite3_stmt* stmt = nullptr;
+    sqlite3_prepare_v2(db_,
+                        "INSERT INTO matches (match_id, white_username, black_username, winner_username, "
+                        "white_elo_delta, black_elo_delta, pgn_data) VALUES (?, ?, ?, ?, ?, ?, ?);",
+                        -1, &stmt, nullptr);
+    const std::string matchId = generateUuidV4();
+    sqlite3_bind_text(stmt, 1, matchId.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, match.whiteUsername.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, match.blackUsername.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, match.winnerUsername.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 5, whiteEloDelta);
+    sqlite3_bind_int(stmt, 6, blackEloDelta);
+    sqlite3_bind_text(stmt, 7, match.pgnData.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
 
     execOrThrow(db_, "COMMIT;");
 

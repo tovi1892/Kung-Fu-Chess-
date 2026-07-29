@@ -311,6 +311,7 @@ void GameServer::advanceRoom(Room& room, std::chrono::steady_clock::time_point n
         logger_.log("room \"" + room.key + "\": forfeit resolved, " +
                     (*winner == PlayerColor::White ? "White" : "Black") + " wins");
         applyMatchResult(room, *winner, *accounts_, outbox_, logger_);
+        roomManager_.finalizeForfeit(room);
     }
 
     room.game->wait(kTickMs);  // a no-op until both players have joined and game->start() ran

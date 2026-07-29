@@ -126,20 +126,18 @@ std::optional<PlayerColor> RoomManager::resolveForfeitIfExpired(Room& room, std:
 
     const PlayerColor winner =
         room.pendingForfeit->disconnectedColor == PlayerColor::White ? PlayerColor::Black : PlayerColor::White;
+    room.pendingForfeit.reset();
 
-    // Move everyone still tracked into spectators (keeps receiving STATE) and stop the
-    // simulation - GameEngine itself has no idea a forfeit happened (no king was
-    // captured), so without this it would happily keep running and could later fire a
-    // second, conflicting GameEnded.
+    return winner;
+}
+
+void RoomManager::finalizeForfeit(Room& room) {
     for (const auto& [playerId, session] : room.players) {
         (void)session;
         room.spectators.insert(playerId);
     }
     room.players.clear();
     room.game->stop();
-    room.pendingForfeit.reset();
-
-    return winner;
 }
 
 }  // namespace kungfu

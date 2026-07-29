@@ -71,7 +71,7 @@ public:
     PostgresAccountRepository& operator=(const PostgresAccountRepository&) = delete;
 
     LoginResult login(const std::string& username, const std::string& password) override;
-    EloUpdateResult recordResult(const std::string& winnerUsername, const std::string& loserUsername) override;
+    EloUpdateResult recordResult(const MatchRecord& match) override;
 
     // Strict registration for the REST API Gateway's POST /register - fails with
     // "username_taken" if the username already exists, unlike login()'s lenient

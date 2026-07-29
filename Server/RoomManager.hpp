@@ -122,12 +122,13 @@ public:
     // from now. Assumes the caller already holds room.roomMutex.
     void startForfeitCountdown(Room& room, PlayerColor disconnectedColor, int graceMs);
 
-    // If `room`'s pendingForfeit has expired as of `now`, resolves it: computes the winner,
-    // moves every remaining player into spectators (keeps receiving STATE) and clears the
-    // players map, stops the room's game (GameEngine has no idea a forfeit happened - no
-    // king was captured - so without this it would happily keep running and could later
-    // fire a second, conflicting GameEnded), and clears pendingForfeit. Returns the winner
-    // if it resolved anything, nullopt otherwise (including "no pending forfeit at all").
+    // If `room`'s pendingForfeit has expired as of `now`, resolves it: computes the winner and
+    // clears pendingForfeit (so this can't fire again on the next tick), then returns the
+    // winner. Returns nullopt otherwise (including "no pending forfeit at all"). Deliberately
+    // does NOT touch room.players yet - see Room.hpp's PendingForfeit comment: both players'
+    // usernames (including the disconnected one's) must still be readable from room.players
+    // when the caller applies the match's Elo/history update, which must happen before
+    // finalizeForfeit() below clears them.
     //
     // Deliberately takes one Room at a time and is meant to be called from within
     // Server/main.cpp's existing per-room tick loop, immediately before that same room's
@@ -139,6 +140,14 @@ public:
     // whole advance (GameServer::advanceRoom does, across both this call and the wait() that
     // follows it).
     std::optional<PlayerColor> resolveForfeitIfExpired(Room& room, std::chrono::steady_clock::time_point now);
+
+    // The other half of a resolved forfeit (see resolveForfeitIfExpired above): moves every
+    // remaining player into spectators (keeps receiving STATE) and clears the players map,
+    // then stops the room's game (GameEngine has no idea a forfeit happened - no king was
+    // captured - so without this it would happily keep running and could later fire a second,
+    // conflicting GameEnded). Called separately, after resolveForfeitIfExpired's caller has
+    // already applied the match result, so room.players is still intact for that lookup.
+    void finalizeForfeit(Room& room);
 
 private:
     std::unordered_map<std::string, std::unique_ptr<Room>> rooms_;
