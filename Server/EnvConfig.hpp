@@ -9,7 +9,7 @@ namespace kungfu {
 // (every default applies, matching this project's existing native dev setup) or as a
 // container wired up by docker-compose.yml/k8s/configmap.yaml (every value overridden).
 //
-// port's fallback stays 7777 (not the 8080 docker-compose.yml/k8s manifests use) so a local
+// port's fallback stays 9000 (not the 8080 docker-compose.yml/k8s manifests use) so a local
 // run with no environment configured behaves exactly as it always has - every container
 // manifest sets PORT explicitly rather than relying on this fallback, so this doesn't affect
 // them either way.
@@ -19,7 +19,7 @@ struct EnvConfig {
     std::string dbUser = "kungfu_admin";
     std::string dbPassword = "secretpassword";
     std::string dbName = "kungfu_chess";
-    int port = 7777;
+    int port = 9000;
 };
 
 EnvConfig loadEnvConfig();

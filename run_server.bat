@@ -14,7 +14,7 @@ if not exist build\kungfu_server.exe (
     exit /b 1
 )
 
-echo Starting Kung Fu Chess server on port 7777...
+echo Starting Kung Fu Chess server on port 9000...
 build\kungfu_server.exe
 echo.
 echo Server exited with code %ERRORLEVEL%.

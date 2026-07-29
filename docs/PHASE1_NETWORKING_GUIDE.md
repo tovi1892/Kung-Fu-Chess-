@@ -701,7 +701,7 @@ possibly far apart, over the real internet":
   eventually password) exists to fix.
 - **No port-forwarding/NAT handling.** Two computers on the same Wi-Fi can reach each
   other directly by local IP; two computers on two different home internet connections
-  generally can't, without the server's router being configured to forward port 7777 in
+  generally can't, without the server's router being configured to forward port 9000 in
   from the outside (or the server being hosted somewhere already internet-reachable,
   like a small cloud VM — a much more common real-world approach than port-forwarding a
   home router).

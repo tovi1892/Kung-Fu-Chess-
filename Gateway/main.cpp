@@ -73,7 +73,7 @@ std::vector<std::string> splitCsv(const std::string& csv) {
 
 int main() {
     const int listenPort = envIntOr("GATEWAY_PORT", 9000);
-    const std::string shardUrlsRaw = envOr("SHARD_URLS", "ws://127.0.0.1:7777");
+    const std::string shardUrlsRaw = envOr("SHARD_URLS", "ws://127.0.0.1:9000");
     const std::vector<std::string> shardUrls = splitCsv(shardUrlsRaw);
     const std::string matchmakerUrl = envOr("MATCHMAKER_URL", "ws://127.0.0.1:9100");
 
