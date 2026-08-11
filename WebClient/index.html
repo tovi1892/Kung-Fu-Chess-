@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kung Fu Chess</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Kung Fu Chess</h1>
+    <span id="statusBadge" class="status status-disconnected">Disconnected</span>
+  </header>
+
+  <main>
+    <section id="lobby" class="panel">
+      <label>
+        Server URL
+        <input id="serverUrl" type="text" spellcheck="false" />
+      </label>
+      <label>
+        Name
+        <input id="username" type="text" autocomplete="username" />
+      </label>
+      <label>
+        Password
+        <input id="password" type="password" autocomplete="current-password" />
+      </label>
+
+      <div class="lobby-actions">
+        <button id="btnQuickMatch">Quick Match</button>
+        <button id="btnCreateRoom">Create Room</button>
+        <div class="join-row">
+          <input id="roomCodeInput" type="text" placeholder="Room code" spellcheck="false" />
+          <button id="btnJoinRoom">Join Room</button>
+        </div>
+      </div>
+
+      <p id="loginError" class="error"></p>
+    </section>
+
+    <section id="game" class="panel hidden">
+      <div class="game-layout">
+        <aside class="side-panel">
+          <div class="player-row">
+            <span id="whiteName">White</span>
+            <span id="whiteRating" class="rating"></span>
+            <span id="whiteScore" class="score">0</span>
+          </div>
+          <div class="player-row">
+            <span id="blackName">Black</span>
+            <span id="blackRating" class="rating"></span>
+            <span id="blackScore" class="score">0</span>
+          </div>
+          <p id="roomLabel" class="room-label"></p>
+          <ol id="moveLog" class="move-log"></ol>
+          <button id="btnLeave">Leave</button>
+        </aside>
+
+        <div class="board-wrap">
+          <div id="banner" class="banner hidden"></div>
+          <canvas id="boardCanvas" width="640" height="640"></canvas>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
